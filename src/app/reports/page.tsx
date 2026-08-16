@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import Link from "next/link";
 import {
   Calendar,
   Wallet,
@@ -12,7 +11,6 @@ import {
   TrendingUp,
   TrendingDown,
   ArrowRight,
-  PlusCircle,
   Sparkles,
 } from "lucide-react";
 import {
@@ -24,17 +22,16 @@ import {
   Cell,
 } from "recharts";
 import { useFinance } from "@/lib/context/FinanceContext";
-import { formatIDR } from "@/lib/utils";
+import { formatIDR, getMonthDisplayName } from "@/lib/utils";
 import { BudgetModal } from "@/components/budget/BudgetModal";
 import { BudgetAlertBanner } from "@/components/budget/BudgetAlertBanner";
 
-export default function DashboardReportsPage() {
+export default function ReportsPage() {
   const {
     currentMonthTransactions,
     expenseCategories,
     currentMonthBudgets,
     overallBudget,
-    overallBudgetPercent,
     selectedMonth,
     setSelectedMonth,
     totalExpenseMonth,
@@ -121,16 +118,12 @@ export default function DashboardReportsPage() {
       .slice(0, 3);
   }, [currentMonthTransactions]);
 
-  const hasOverallBudget = Boolean(overallBudget && overallBudget.limitAmount > 0);
-
   return (
     <div className="p-4 space-y-4">
       {/* HEADER & MONTH PICKER */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-extrabold text-[var(--foreground)] tracking-tight">
-            Laporan FinLog
-          </h1>
+          <h1 className="text-xl font-extrabold text-white tracking-tight">Laporan Bulanan</h1>
           <p className="text-[11px] text-slate-400">Ringkasan finansial & anggaran</p>
         </div>
 
@@ -148,7 +141,7 @@ export default function DashboardReportsPage() {
       {/* Budget Warning Banner (80% & 100%) */}
       <BudgetAlertBanner onOpenBudgetModal={() => setShowBudgetModal(true)} />
 
-      {/* CARD 1: MONTHLY CASH FLOW SUMMARY */}
+      {/* CARD 1: MONTHLY CASH FLOW SUMMARY (Matches Screenshot) */}
       <div className="relative overflow-hidden p-5 rounded-3xl bg-gradient-to-br from-[#0F2228] via-[#0D1826] to-[#0A101D] border border-emerald-500/30 shadow-xl">
         <div className="flex items-start justify-between">
           <div className="space-y-1">
@@ -187,22 +180,9 @@ export default function DashboardReportsPage() {
         </div>
       </div>
 
-      {/* QUICK ACTION: CATAT PENGELUARAN */}
-      <Link
-        href="/add"
-        className="w-full py-3.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold rounded-2xl text-xs flex items-center justify-between shadow-lg shadow-emerald-500/20 transition-all"
-      >
-        <div className="flex items-center gap-2">
-          <PlusCircle className="w-4 h-4" />
-          <span>Catat Pengeluaran Baru</span>
-        </div>
-        <span className="text-[11px] font-semibold opacity-90">Buka Form →</span>
-      </Link>
-
       {/* CARD 2: TOTAL KESELURUHAN (ALL TIME ACCUMULATION) */}
       <div className="p-4 rounded-3xl bg-[#0F162A] border border-slate-800 shadow-md">
         <button
-          type="button"
           onClick={() => setShowAllTimeDetails(!showAllTimeDetails)}
           className="w-full flex items-center justify-between text-left"
         >
@@ -239,60 +219,24 @@ export default function DashboardReportsPage() {
         )}
       </div>
 
-      {/* CARD 3: ATUR ANGGARAN CTA CARD (Tampil HANYA JIKA belum ada anggaran) */}
-      {!hasOverallBudget ? (
-        <div
-          onClick={() => setShowBudgetModal(true)}
-          className="cursor-pointer p-4 rounded-3xl bg-gradient-to-r from-[#0D241E]/80 to-[#0F162A] border border-emerald-500/30 flex items-center justify-between hover:border-emerald-400 transition-all shadow-md group"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
-              <Sliders className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-white">Atur Anggaran Bulanan</p>
-              <p className="text-[11px] text-slate-400">
-                Pantau batas pengeluaran & dapat peringatan di 80% & 100%
-              </p>
-            </div>
+      {/* CARD 3: ATUR ANGGARAN CTA CARD */}
+      <div
+        onClick={() => setShowBudgetModal(true)}
+        className="cursor-pointer p-4 rounded-3xl bg-gradient-to-r from-[#0D241E]/80 to-[#0F162A] border border-emerald-500/30 flex items-center justify-between hover:border-emerald-400 transition-all shadow-md group"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
+            <Sliders className="w-5 h-5" />
           </div>
-          <ArrowRight className="w-4 h-4 text-emerald-400 group-hover:translate-x-1 transition-transform" />
-        </div>
-      ) : (
-        /* Jika sudah ada anggaran, tampilkan progress pemakaian anggaran bulanan */
-        <div className="p-4 rounded-3xl bg-[#0F162A] border border-slate-800 shadow-md space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs font-bold text-white">Anggaran Keseluruhan</span>
-            </div>
-            <button
-              onClick={() => setShowBudgetModal(true)}
-              className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300"
-            >
-              Ubah →
-            </button>
-          </div>
-
-          <div className="flex items-baseline justify-between pt-1">
-            <span className="text-xs font-bold text-white">
-              {formatIDR(totalExpenseMonth)} / {formatIDR(overallBudget?.limitAmount || 0)}
-            </span>
-            <span className={`text-xs font-bold ${overallBudgetPercent >= 100 ? "text-red-400" : overallBudgetPercent >= 80 ? "text-amber-400" : "text-emerald-400"}`}>
-              {overallBudgetPercent}%
-            </span>
-          </div>
-
-          <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${
-                overallBudgetPercent >= 100 ? "bg-red-500" : overallBudgetPercent >= 80 ? "bg-amber-400" : "bg-emerald-400"
-              }`}
-              style={{ width: `${Math.min(100, overallBudgetPercent)}%` }}
-            />
+          <div>
+            <p className="text-xs font-bold text-white">Atur Anggaran Bulanan</p>
+            <p className="text-[11px] text-slate-400">
+              Pantau batas pengeluaran & dapat peringatan di 80% & 100%
+            </p>
           </div>
         </div>
-      )}
+        <ArrowRight className="w-4 h-4 text-emerald-400 group-hover:translate-x-1 transition-transform" />
+      </div>
 
       {/* CARD 4: PENGELUARAN PER KATEGORI */}
       <div className="p-4 rounded-3xl bg-[#0F162A] border border-slate-800 shadow-md space-y-3">
