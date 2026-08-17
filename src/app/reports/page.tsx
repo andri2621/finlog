@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import {
   Calendar,
   Wallet,
@@ -44,6 +44,7 @@ export default function ReportsPage() {
   const [showAllTimeDetails, setShowAllTimeDetails] = useState(false);
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [activeDayData, setActiveDayData] = useState<{ day: string; amount: number } | null>(null);
+  const monthInputRef = useRef<HTMLInputElement>(null);
 
   // Calculate days in month & average
   const daysInMonth = useMemo(() => {
@@ -128,15 +129,34 @@ export default function ReportsPage() {
           <p className="text-[11px] text-slate-400">Ringkasan finansial & anggaran</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <UserFilterDropdown />
-          <div className="flex items-center gap-1.5 bg-[#0F162A] border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-300 font-semibold">
-            <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+          <div
+            onClick={() => {
+              try {
+                monthInputRef.current?.showPicker?.();
+              } catch {
+                monthInputRef.current?.focus();
+              }
+            }}
+            className="relative flex items-center gap-1.5 bg-white dark:bg-[#0F162A] border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 font-bold transition-colors cursor-pointer shadow-sm"
+          >
+            <Calendar className="w-3.5 h-3.5 text-emerald-500 shrink-0 pointer-events-none" />
+            <span className="pointer-events-none whitespace-nowrap text-xs">
+              {getMonthDisplayName(selectedMonth)}
+            </span>
+            <ChevronDown className="w-3 h-3 text-slate-400 shrink-0 pointer-events-none" />
             <input
+              ref={monthInputRef}
               type="month"
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="bg-transparent text-xs text-white focus:outline-none cursor-pointer"
+              onClick={(e) => {
+                try {
+                  (e.target as HTMLInputElement).showPicker?.();
+                } catch {}
+              }}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             />
           </div>
         </div>
@@ -239,7 +259,7 @@ export default function ReportsPage() {
             </p>
           </div>
         </div>
-        <ArrowRight className="w-4 h-4 text-emerald-400 group-hover:translate-x-1 transition-transform" />
+        <ArrowRight className="w-4 h-4 ml-2 text-emerald-400 group-hover:translate-x-1 transition-transform" />
       </div>
 
       {/* CARD 4: PENGELUARAN PER KATEGORI */}

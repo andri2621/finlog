@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, Wallet, Plus, Trash2, Check, ArrowRight, RotateCw, Sparkles } from "lucide-react";
+import { X, Wallet, Plus, Trash2, Check, ArrowRight, RotateCw, Sparkles, ChevronDown } from "lucide-react";
 import { useFinance } from "@/lib/context/FinanceContext";
 import { useAuth } from "@/lib/context/AuthContext";
 import { formatIDR, formatInputNumber, parseInputNumber, getTodayString } from "@/lib/utils";
@@ -210,21 +210,24 @@ export function TempatUangModal({
               <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
                 Pilih Tempat Uang
               </label>
-              <select
-                value={targetAccount}
-                onChange={(e) => {
-                  setTargetAccount(e.target.value);
-                  const bal = getPocketBalance(e.target.value);
-                  setNewBalanceInput(bal > 0 ? formatInputNumber(String(bal)) : "");
-                }}
-                className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-white font-semibold focus:outline-none focus:border-emerald-500 cursor-pointer"
-              >
-                {pockets.map((p) => (
-                  <option key={p.id} value={p.name}>
-                    {p.name} (Saldo Saat Ini: {formatIDR(getPocketBalance(p.name))})
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  value={targetAccount}
+                  onChange={(e) => {
+                    setTargetAccount(e.target.value);
+                    const bal = getPocketBalance(e.target.value);
+                    setNewBalanceInput(bal > 0 ? formatInputNumber(String(bal)) : "");
+                  }}
+                  className="w-full appearance-none bg-slate-900 border border-slate-700/80 rounded-xl pl-3.5 pr-10 py-2.5 text-sm text-white font-semibold focus:outline-none focus:border-emerald-500 cursor-pointer"
+                >
+                  {pockets.map((p) => (
+                    <option key={p.id} value={p.name}>
+                      {p.name} (Saldo Saat Ini: {formatIDR(getPocketBalance(p.name))})
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
             </div>
 
             {/* Current vs New Balance Display */}

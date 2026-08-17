@@ -112,9 +112,8 @@ export default function SavingsPage() {
             <p className="text-3xl font-extrabold text-white tracking-tight mt-1">
               {formatIDR(totalSavingsBalance)}
             </p>
-            <div className="flex items-center gap-3 mt-2 text-xs text-emerald-300/90">
+            <div className="flex flex-col gap-1 mt-2 text-xs text-emerald-300/90">
               <span>{savings.length} tujuan impian</span>
-              <span>•</span>
               <span>Total Aset: <strong className="text-white font-bold">{formatIDR(totalNetWorth)}</strong></span>
             </div>
           </div>
@@ -214,31 +213,40 @@ export default function SavingsPage() {
             return (
               <div
                 key={goal.id}
-                className="p-4 rounded-3xl bg-white dark:bg-[#0F162A] border border-slate-200 dark:border-slate-800/90 hover:border-slate-300 dark:hover:border-slate-700 shadow-md space-y-3 transition-all"
+                className="p-4 rounded-3xl bg-white dark:bg-[#0F162A] border border-slate-200 dark:border-slate-800 shadow-md space-y-3.5 transition-all hover:border-slate-300 dark:hover:border-slate-700"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5 min-w-0">
+                {/* 1. Header: Icon + Title + Action buttons (Edit/Delete) */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div
-                      className="w-9 h-9 rounded-2xl flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm"
+                      className="w-10 h-10 rounded-2xl flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-sm"
                       style={{ backgroundColor: goal.color }}
                     >
                       {renderGoalIcon(goal.icon)}
                     </div>
                     <div className="min-w-0">
-                      <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">{goal.name}</h4>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                        <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{formatIDR(goal.currentAmount)}</strong>
-                        <span className="text-slate-400"> / {formatIDR(goal.targetAmount)}</span>
-                      </p>
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                        {goal.name}
+                      </h4>
+                      {goal.targetDate ? (
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          Tenggat: {goal.targetDate}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          Tanpa batas waktu
+                        </p>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1 shrink-0">
+                  {/* Actions (Edit & Delete) grouped in quiet ghost icons */}
+                  <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-900/80 p-1 rounded-xl border border-slate-100 dark:border-slate-800 shrink-0">
                     <button
                       type="button"
                       onClick={() => handleOpenEditGoal(goal.id)}
                       title="Edit Tujuan"
-                      className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-white dark:hover:bg-slate-800 transition-colors cursor-pointer"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
@@ -246,37 +254,57 @@ export default function SavingsPage() {
                       type="button"
                       onClick={() => setGoalToDelete(goal)}
                       title="Hapus Tujuan"
-                      className="p-2 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-white dark:hover:bg-slate-800 transition-colors cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleOpenDeposit(goal.id)}
-                      className="py-1.5 px-3 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 font-bold rounded-xl text-xs border border-emerald-500/30 transition-colors cursor-pointer ml-0.5"
-                    >
-                      + Setor
                     </button>
                   </div>
                 </div>
 
-                {/* Progress bar */}
-                <div className="space-y-1">
-                  <div className="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: `${percent}%`,
-                        backgroundColor: goal.color,
-                      }}
-                    />
+                {/* 2. Middle: Balance & Target Breakdown */}
+                <div className="p-3 rounded-2xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/80 space-y-2">
+                  <div className="flex items-baseline justify-between">
+                    <div>
+                      <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Terkumpul</span>
+                      <p className="text-base font-extrabold text-slate-900 dark:text-white">
+                        {formatIDR(goal.currentAmount)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Target</span>
+                      <p className="text-xs font-bold text-slate-600 dark:text-slate-400">
+                        {formatIDR(goal.targetAmount)}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 pt-0.5">
-                    <span className="font-semibold text-emerald-500">{percent}%</span>
-                    {goal.targetDate && (
-                      <span>Tenggat: {goal.targetDate}</span>
-                    )}
+
+                  {/* Progress bar */}
+                  <div className="space-y-1 pt-1">
+                    <div className="w-full bg-slate-200 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${percent}%`,
+                          backgroundColor: goal.color,
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                      <span className="font-bold text-emerald-500">{percent}% tercapai</span>
+                      <span>Sisa {formatIDR(Math.max(0, goal.targetAmount - goal.currentAmount))}</span>
+                    </div>
                   </div>
                 </div>
+
+                {/* 3. Footer: Full Width Spacious "+ Setor Tabungan" Button */}
+                <button
+                  type="button"
+                  onClick={() => handleOpenDeposit(goal.id)}
+                  className="w-full py-2.5 px-4 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-bold rounded-2xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Setor ke {goal.name}</span>
+                </button>
               </div>
             );
           })

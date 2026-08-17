@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
   Search,
@@ -12,11 +12,18 @@ import {
   Receipt,
   PlusCircle,
   Calendar,
+  ChevronDown,
   X,
 } from "lucide-react";
 import { useFinance } from "@/lib/context/FinanceContext";
 import { useAuth } from "@/lib/context/AuthContext";
-import { formatIDR, formatDateGroup, getMonthDisplayName, formatInputNumber, parseInputNumber } from "@/lib/utils";
+import {
+  formatIDR,
+  formatDateGroup,
+  getMonthDisplayName,
+  formatInputNumber,
+  parseInputNumber,
+} from "@/lib/utils";
 import { Transaction } from "@/lib/db/types";
 import { UserFilterDropdown } from "@/components/ui/UserFilterDropdown";
 
@@ -35,20 +42,25 @@ export default function HistoryPage() {
   } = useFinance();
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeFilter, setActiveFilter] = useState<"all" | "expense" | "income">("all");
-  const [selectedTxForAction, setSelectedTxForAction] = useState<Transaction | null>(null);
+  const [activeFilter, setActiveFilter] = useState<
+    "all" | "expense" | "income"
+  >("all");
+  const [selectedTxForAction, setSelectedTxForAction] =
+    useState<Transaction | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editDesc, setEditDesc] = useState("");
   const [editAmount, setEditAmount] = useState("");
   const [editCategory, setEditCategory] = useState("");
   const [editPaymentMethod, setEditPaymentMethod] = useState("");
   const [editDate, setEditDate] = useState("");
+  const monthInputRef = useRef<HTMLInputElement>(null);
 
   // Filter transactions
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
       // Month filter
-      if (selectedMonth && tx.date && !tx.date.startsWith(selectedMonth)) return false;
+      if (selectedMonth && tx.date && !tx.date.startsWith(selectedMonth))
+        return false;
 
       // User filter (All, Me, Partner)
       const rec = (tx.recordedBy || "").trim().toLowerCase();
@@ -57,8 +69,14 @@ export default function HistoryPage() {
       const partnerName = (partner?.name || "").trim().toLowerCase();
       const partnerEmail = (partner?.email || "").trim().toLowerCase();
 
-      const isMe = Boolean((meName && rec === meName) || (meEmail && rec === meEmail));
-      const isPartner = Boolean((partnerName && rec === partnerName) || (partnerEmail && rec === partnerEmail) || (!isMe && rec !== ""));
+      const isMe = Boolean(
+        (meName && rec === meName) || (meEmail && rec === meEmail),
+      );
+      const isPartner = Boolean(
+        (partnerName && rec === partnerName) ||
+        (partnerEmail && rec === partnerEmail) ||
+        (!isMe && rec !== ""),
+      );
 
       if (selectedUserFilter === "me") {
         if (!isMe && meName) return false;
@@ -81,7 +99,17 @@ export default function HistoryPage() {
 
       return true;
     });
-  }, [transactions, selectedMonth, selectedUserFilter, user?.name, user?.email, partner?.name, partner?.email, activeFilter, searchQuery]);
+  }, [
+    transactions,
+    selectedMonth,
+    selectedUserFilter,
+    user?.name,
+    user?.email,
+    partner?.name,
+    partner?.email,
+    activeFilter,
+    searchQuery,
+  ]);
 
   // Group by Date
   const groupedTransactions = useMemo(() => {
@@ -96,7 +124,9 @@ export default function HistoryPage() {
     return groups;
   }, [filteredTransactions]);
 
-  const sortedDates = Object.keys(groupedTransactions).sort((a, b) => b.localeCompare(a));
+  const sortedDates = Object.keys(groupedTransactions).sort((a, b) =>
+    b.localeCompare(a),
+  );
 
   const handleStartEdit = (tx: Transaction) => {
     setSelectedTxForAction(tx);
@@ -142,15 +172,34 @@ export default function HistoryPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <UserFilterDropdown />
-          <div className="flex items-center gap-1.5 bg-white dark:bg-[#0F162A] border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-700 dark:text-slate-300 font-semibold shadow-sm">
-            <Calendar className="w-3.5 h-3.5 text-emerald-500" />
+          <div
+            onClick={() => {
+              try {
+                monthInputRef.current?.showPicker?.();
+              } catch {
+                monthInputRef.current?.focus();
+              }
+            }}
+            className="relative flex items-center gap-1.5 bg-white dark:bg-[#0F162A] border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 font-bold transition-colors cursor-pointer shadow-sm"
+          >
+            <Calendar className="w-3.5 h-3.5 text-emerald-500 shrink-0 pointer-events-none" />
+            <span className="pointer-events-none whitespace-nowrap text-xs">
+              {getMonthDisplayName(selectedMonth)}
+            </span>
+            <ChevronDown className="w-3 h-3 text-slate-400 shrink-0 pointer-events-none" />
             <input
+              ref={monthInputRef}
               type="month"
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="bg-transparent text-xs text-slate-900 dark:text-white focus:outline-none cursor-pointer"
+              onClick={(e) => {
+                try {
+                  (e.target as HTMLInputElement).showPicker?.();
+                } catch {}
+              }}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             />
           </div>
         </div>
@@ -218,15 +267,16 @@ export default function HistoryPage() {
             Tidak ada transaksi ditemukan
           </p>
           <p className="text-xs text-slate-400 max-w-xs mt-1">
-            Belum ada catatan pada periode ini. Mulai mencatat pengeluaran atau pemasukan baru sekarang.
+            Belum ada catatan pada periode ini. Mulai mencatat pengeluaran atau
+            pemasukan baru sekarang.
           </p>
           <Link
             href={
               activeFilter === "income"
                 ? "/add?type=income"
                 : activeFilter === "expense"
-                ? "/add?type=expense"
-                : "/add"
+                  ? "/add?type=expense"
+                  : "/add"
             }
             className="mt-4 py-2.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
           >
@@ -235,8 +285,8 @@ export default function HistoryPage() {
               {activeFilter === "income"
                 ? "Catat Pemasukan"
                 : activeFilter === "expense"
-                ? "Catat Pengeluaran"
-                : "Catat Transaksi"}
+                  ? "Catat Pengeluaran"
+                  : "Catat Transaksi"}
             </span>
           </Link>
         </div>
@@ -297,26 +347,27 @@ export default function HistoryPage() {
 
                           <div>
                             <p className="text-xs font-bold text-slate-900 dark:text-white">
-                              {tx.description || (isExpense ? "Pengeluaran" : "Pemasukan")}
+                              {tx.description ||
+                                (isExpense ? "Pengeluaran" : "Pemasukan")}
                             </p>
                             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                              {tx.category || "Umum"} • {tx.paymentMethod || "Cash"} • Oleh{" "}
+                              {tx.category || "Umum"} •{" "}
+                              {tx.paymentMethod || "Cash"} • Oleh{" "}
                               <span className="text-slate-700 dark:text-slate-300 font-medium">
                                 {tx.recordedBy || user?.name || "Saya"}
                               </span>
                             </p>
+                            <p
+                              className={`text-xs font-extrabold ${
+                                isExpense
+                                  ? "text-red-500"
+                                  : "text-emerald-500"
+                              }`}
+                            >
+                              {isExpense ? "-" : "+"}
+                              {formatIDR(tx.amount || 0)}
+                            </p>
                           </div>
-                        </div>
-
-                        <div className="text-right">
-                          <p
-                            className={`text-xs font-extrabold ${
-                              isExpense ? "text-slate-900 dark:text-white" : "text-emerald-500"
-                            }`}
-                          >
-                            {isExpense ? "-" : "+"}
-                            {formatIDR(tx.amount || 0)}
-                          </p>
                         </div>
                       </div>
                     );
@@ -333,7 +384,9 @@ export default function HistoryPage() {
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
           <div className="w-full max-w-md bg-white dark:bg-[#0D1326] border border-slate-200 dark:border-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Detail Transaksi</h3>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                Detail Transaksi
+              </h3>
               <button
                 onClick={() => setSelectedTxForAction(null)}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-white"
@@ -344,36 +397,52 @@ export default function HistoryPage() {
 
             <div className="space-y-2 text-xs">
               <div className="flex justify-between py-1 gap-2">
-                <span className="text-slate-500 dark:text-slate-400">Deskripsi:</span>
+                <span className="text-slate-500 dark:text-slate-400">
+                  Deskripsi:
+                </span>
                 <span className="font-bold text-slate-900 dark:text-white">
                   {selectedTxForAction.description}
                 </span>
               </div>
               <div className="flex justify-between py-1 gap-2">
-                <span className="text-slate-500 dark:text-slate-400">Jumlah:</span>
+                <span className="text-slate-500 dark:text-slate-400">
+                  Jumlah:
+                </span>
                 <span className="font-extrabold text-sm text-slate-900 dark:text-white">
                   {formatIDR(selectedTxForAction.amount)}
                 </span>
               </div>
               <div className="flex justify-between py-1 gap-2">
-                <span className="text-slate-500 dark:text-slate-400">Kategori:</span>
-                <span className="font-semibold text-slate-900 dark:text-white">{selectedTxForAction.category}</span>
+                <span className="text-slate-500 dark:text-slate-400">
+                  Kategori:
+                </span>
+                <span className="font-semibold text-slate-900 dark:text-white">
+                  {selectedTxForAction.category}
+                </span>
               </div>
               <div className="flex justify-between py-1 gap-2">
-                <span className="text-slate-500 dark:text-slate-400">Metode Bayar:</span>
+                <span className="text-slate-500 dark:text-slate-400">
+                  Metode Bayar:
+                </span>
                 <span className="font-semibold text-slate-900 dark:text-white">
                   {selectedTxForAction.paymentMethod}
                 </span>
               </div>
               <div className="flex justify-between py-1 gap-2">
-                <span className="text-slate-500 dark:text-slate-400">Dicatat Oleh:</span>
+                <span className="text-slate-500 dark:text-slate-400">
+                  Dicatat Oleh:
+                </span>
                 <span className="font-semibold text-emerald-500">
                   {selectedTxForAction.recordedBy || user?.name || "Saya"}
                 </span>
               </div>
               <div className="flex justify-between py-1 gap-2">
-                <span className="text-slate-500 dark:text-slate-400">Tanggal:</span>
-                <span className="font-medium text-slate-700 dark:text-slate-300">{selectedTxForAction.date}</span>
+                <span className="text-slate-500 dark:text-slate-400">
+                  Tanggal:
+                </span>
+                <span className="font-medium text-slate-700 dark:text-slate-300">
+                  {selectedTxForAction.date}
+                </span>
               </div>
             </div>
 
@@ -425,7 +494,9 @@ export default function HistoryPage() {
                 type="text"
                 inputMode="numeric"
                 value={editAmount}
-                onChange={(e) => setEditAmount(formatInputNumber(e.target.value))}
+                onChange={(e) =>
+                  setEditAmount(formatInputNumber(e.target.value))
+                }
                 className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 transition-colors"
               />
             </div>
@@ -449,7 +520,10 @@ export default function HistoryPage() {
                 Kategori
               </label>
               <div className="grid grid-cols-3 gap-2">
-                {(selectedTxForAction.type === "income" ? incomeCategories : expenseCategories).map((cat) => (
+                {(selectedTxForAction.type === "income"
+                  ? incomeCategories
+                  : expenseCategories
+                ).map((cat) => (
                   <button
                     key={cat.id}
                     type="button"
@@ -460,7 +534,10 @@ export default function HistoryPage() {
                         : "bg-white dark:bg-[#0F162A]/80 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400"
                     }`}
                   >
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                    <span
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: cat.color }}
+                    />
                     <span className="truncate">{cat.name}</span>
                   </button>
                 ))}

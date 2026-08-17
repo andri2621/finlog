@@ -11,10 +11,16 @@ import {
   TrendingDown,
   TrendingUp,
   Scan,
+  Sparkles,
 } from "lucide-react";
 import { useFinance } from "@/lib/context/FinanceContext";
 import { useAuth } from "@/lib/context/AuthContext";
-import { formatIDR, getTodayString, formatInputNumber, parseInputNumber } from "@/lib/utils";
+import {
+  formatIDR,
+  getTodayString,
+  formatInputNumber,
+  parseInputNumber,
+} from "@/lib/utils";
 import confetti from "canvas-confetti";
 import { BudgetAlertBanner } from "@/components/budget/BudgetAlertBanner";
 import { BudgetModal } from "@/components/budget/BudgetModal";
@@ -49,20 +55,19 @@ function AddTransactionForm() {
     clearLastSavedTransaction,
   } = useFinance();
 
-  const [transactionType, setTransactionType] = useState<"expense" | "income">(() =>
-    typeParam === "income" ? "income" : "expense"
+  const [transactionType, setTransactionType] = useState<"expense" | "income">(
+    () => (typeParam === "income" ? "income" : "expense"),
   );
 
   const [amountStr, setAmountStr] = useState<string>("0");
   const [description, setDescription] = useState<string>("");
-  const [selectedExpenseCategory, setSelectedExpenseCategory] = useState<string>(
-    expenseCategories[0]?.name || "Makanan"
-  );
+  const [selectedExpenseCategory, setSelectedExpenseCategory] =
+    useState<string>(expenseCategories[0]?.name || "Makanan");
   const [selectedIncomeCategory, setSelectedIncomeCategory] = useState<string>(
-    incomeCategories[0]?.name || "Gaji"
+    incomeCategories[0]?.name || "Gaji",
   );
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>(
-    paymentMethods[0]?.name || "Cash"
+    paymentMethods[0]?.name || "Cash",
   );
   const [selectedDate, setSelectedDate] = useState<string>(getTodayString());
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -91,7 +96,9 @@ function AddTransactionForm() {
     if (numericAmount <= 0) return;
 
     const isExpense = transactionType === "expense";
-    const category = isExpense ? selectedExpenseCategory : selectedIncomeCategory;
+    const category = isExpense
+      ? selectedExpenseCategory
+      : selectedIncomeCategory;
 
     setIsSubmitting(true);
     try {
@@ -109,7 +116,9 @@ function AddTransactionForm() {
         particleCount: 25,
         spread: 60,
         origin: { y: 0.8 },
-        colors: isExpense ? ["#10B981", "#3B82F6", "#F59E0B"] : ["#10B981", "#06B6D4", "#EAB308"],
+        colors: isExpense
+          ? ["#10B981", "#3B82F6", "#F59E0B"]
+          : ["#10B981", "#06B6D4", "#EAB308"],
       });
 
       // Reset input fields
@@ -134,10 +143,14 @@ function AddTransactionForm() {
               </div>
               <div>
                 <p className="text-xs font-bold text-white">
-                  {lastSavedTransaction.type === "expense" ? "Pengeluaran" : "Pemasukan"} Tersimpan
+                  {lastSavedTransaction.type === "expense"
+                    ? "Pengeluaran"
+                    : "Pemasukan"}{" "}
+                  Tersimpan
                 </p>
                 <p className="text-[11px] text-emerald-300">
-                  {formatIDR(lastSavedTransaction.amount)} • {lastSavedTransaction.category}
+                  {formatIDR(lastSavedTransaction.amount)} •{" "}
+                  {lastSavedTransaction.category}
                 </p>
               </div>
             </div>
@@ -154,7 +167,9 @@ function AddTransactionForm() {
               type="button"
               onClick={() => {
                 setTransactionType(lastSavedTransaction.type);
-                setAmountStr(formatInputNumber(String(lastSavedTransaction.amount)));
+                setAmountStr(
+                  formatInputNumber(String(lastSavedTransaction.amount)),
+                );
                 setDescription(lastSavedTransaction.description);
                 if (lastSavedTransaction.type === "expense") {
                   setSelectedExpenseCategory(lastSavedTransaction.category);
@@ -230,20 +245,13 @@ function AddTransactionForm() {
             )}
           </h1>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">
-            Dicatat oleh <span className="text-emerald-500 font-semibold">{user?.name}</span>
+            Dicatat oleh{" "}
+            <span className="text-emerald-500 font-semibold">{user?.name}</span>
           </p>
         </div>
 
         {transactionType === "expense" && (
           <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setShowScannerModal(true)}
-              className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/15 flex items-center gap-1 bg-emerald-500/10 px-2.5 py-1.5 rounded-full border border-emerald-500/30 transition-colors cursor-pointer"
-            >
-              <Scan className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Scan Struk</span>
-            </button>
             <button
               type="button"
               onClick={() => setShowBudgetModal(true)}
@@ -255,6 +263,44 @@ function AddTransactionForm() {
           </div>
         )}
       </div>
+
+      {transactionType === "expense" && (
+        <div className="space-y-3">
+          {/* Smart OCR Action Banner */}
+          <button
+            type="button"
+            onClick={() => setShowScannerModal(true)}
+            className="w-full p-3 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-transparent border border-emerald-500/25 hover:border-emerald-500/50 flex items-center justify-between transition-all group shadow-sm text-left cursor-pointer"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-500 group-hover:scale-105 transition-transform shrink-0">
+                <Scan className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <span>Scan Struk Belanja</span>
+                  <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    AI OCR
+                  </span>
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Foto struk untuk catat otomatis tanpa ketik
+                </p>
+              </div>
+            </div>
+            <Sparkles className="w-4 h-4 text-emerald-400 group-hover:rotate-12 transition-transform shrink-0 ml-2" />
+          </button>
+
+          {/* Elegant Divider */}
+          <div className="flex items-center gap-3 px-1 pt-0.5">
+            <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              Atau Catat Manual
+            </span>
+            <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+          </div>
+        </div>
+      )}
 
       {/* TRANSACTION INPUT FORM */}
       <form onSubmit={handleSave} className="space-y-4">
@@ -279,7 +325,9 @@ function AddTransactionForm() {
         {/* DESCRIPTION FIELD */}
         <div>
           <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-            {transactionType === "expense" ? "Barang / Kebutuhan" : "Sumber / Catatan"}
+            {transactionType === "expense"
+              ? "Barang / Kebutuhan"
+              : "Sumber / Catatan"}
           </label>
           <input
             type="text"
@@ -348,12 +396,17 @@ function AddTransactionForm() {
 
         {/* PAYMENT METHOD PILLS (WITH COLOR DOTS & LIVE BALANCE) */}
         <div>
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex flex-col justify-between mb-2">
             <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-              {transactionType === "expense" ? "Metode Pembayaran (Akun)" : "Diterima Di (Metode / Akun)"}
+              {transactionType === "expense"
+                ? "Metode Pembayaran (Akun)"
+                : "Diterima Di (Metode / Akun)"}
             </label>
             <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-              Saldo {selectedPaymentMethod}: <strong className="text-emerald-500 font-bold">{formatIDR(getPocketBalance(selectedPaymentMethod))}</strong>
+              Saldo {selectedPaymentMethod}:{" "}
+              <strong className="text-emerald-500 font-bold">
+                {formatIDR(getPocketBalance(selectedPaymentMethod))}
+              </strong>
             </span>
           </div>
           <div className="grid grid-cols-3 gap-2">
@@ -379,11 +432,16 @@ function AddTransactionForm() {
               );
             })}
           </div>
-          {transactionType === "expense" && numericAmount > getPocketBalance(selectedPaymentMethod) && getPocketBalance(selectedPaymentMethod) > 0 && (
-            <p className="text-[11px] text-amber-500 dark:text-amber-400 flex items-center gap-1 mt-1.5">
-              <span>⚠️ Pengeluaran ini melebihi saldo {selectedPaymentMethod} saat ini ({formatIDR(getPocketBalance(selectedPaymentMethod))}).</span>
-            </p>
-          )}
+          {transactionType === "expense" &&
+            numericAmount > getPocketBalance(selectedPaymentMethod) &&
+            getPocketBalance(selectedPaymentMethod) > 0 && (
+              <p className="text-[11px] text-amber-500 dark:text-amber-400 flex items-center gap-1 mt-1.5">
+                <span>
+                  ⚠️ Pengeluaran ini melebihi saldo {selectedPaymentMethod} saat
+                  ini ({formatIDR(getPocketBalance(selectedPaymentMethod))}).
+                </span>
+              </p>
+            )}
         </div>
 
         {/* DATE PICKER */}
@@ -434,7 +492,10 @@ function AddTransactionForm() {
       </form>
 
       {/* Budget Modal */}
-      <BudgetModal isOpen={showBudgetModal} onClose={() => setShowBudgetModal(false)} />
+      <BudgetModal
+        isOpen={showBudgetModal}
+        onClose={() => setShowBudgetModal(false)}
+      />
 
       {/* Receipt Scanner Modal */}
       <ReceiptScannerModal

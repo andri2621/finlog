@@ -73,20 +73,31 @@ input[type=number] {
   -moz-appearance: textfield;
 }
 
-/* Make date picker input clickable everywhere and invert icon in dark mode */
-input[type="date"] {
-  cursor: pointer;
-  position: relative;
+/* Make date picker & select inputs comfortable with generous spacing */
+select {
+  padding-right: 2.25rem;
 }
 
-input[type="date"]::-webkit-calendar-picker-indicator {
+input[type="date"],
+input[type="time"] {
+  cursor: pointer;
+  position: relative;
+  padding-right: 0.75rem;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
   cursor: pointer;
   filter: invert(0.8);
   opacity: 0.8;
   padding: 4px;
+  margin-right: 6px;
+  border-radius: 6px;
+  transition: opacity 0.2s;
 }
 
-html.light input[type="date"]::-webkit-calendar-picker-indicator {
+html.light input[type="date"]::-webkit-calendar-picker-indicator,
+html.light input[type="time"]::-webkit-calendar-picker-indicator {
   filter: invert(0.2);
 }
 

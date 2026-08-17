@@ -21,6 +21,8 @@ import { useAuth } from "@/lib/context/AuthContext";
 import { useFinance } from "@/lib/context/FinanceContext";
 import { PartnerModal } from "@/components/partner/PartnerModal";
 import { useRouter } from "next/navigation";
+import { sendLocalNotification } from "@/lib/notification";
+import { getTodayString } from "@/lib/utils";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -57,6 +59,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       router.replace("/");
     }
   }, [isLoaded, isAuthenticated, onboardingComplete, isPublicPage, pathname, router]);
+
+  // Daily reminder scheduler
+  useEffect(() => {
+    if (!user || user.reminderEnabled === false) return;
+
+    const checkDailyReminder = () => {
+      const now = new Date();
+      const currentHoursMinutes = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      const targetTime = user.reminderTime || "20:00";
+      const today = getTodayString();
+      const lastNotified = localStorage.getItem("finlog_last_reminder_date");
+
+      if (currentHoursMinutes === targetTime && lastNotified !== today) {
+        localStorage.setItem("finlog_last_reminder_date", today);
+        sendLocalNotification("FinLog Pengingat Harian 🔔", {
+          body: `Halo ${user.name || "Kawan"}! Jangan lupa catat pengeluaran hari ini untuk pertahankan streak 🔥`,
+          url: "/add",
+        });
+      }
+    };
+
+    // Check immediately on load/focus and then every 30 seconds
+    checkDailyReminder();
+    const interval = setInterval(checkDailyReminder, 30 * 1000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   // Close profile dropdown when clicking outside
   useEffect(() => {

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, RefreshCw, Plus, Trash2, Check, Calendar, AlertCircle } from "lucide-react";
+import { X, RefreshCw, Plus, Trash2, Check, Calendar, AlertCircle, ChevronDown } from "lucide-react";
 import { useFinance } from "@/lib/context/FinanceContext";
 import { formatIDR, formatInputNumber, parseInputNumber } from "@/lib/utils";
 
@@ -191,34 +191,40 @@ export function RecurringManagerModal({ isOpen, onClose }: RecurringManagerModal
                   <label className="block text-[11px] font-semibold text-slate-400 mb-1">
                     Kategori
                   </label>
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none"
-                  >
-                    {expenseCategories.map((c) => (
-                      <option key={c.id} value={c.name}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      className="w-full appearance-none bg-slate-900 border border-slate-700 rounded-xl pl-2.5 pr-7 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                    >
+                      {expenseCategories.map((c) => (
+                        <option key={c.id} value={c.name}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
                 </div>
 
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-400 mb-1">
                     Metode Pembayaran
                   </label>
-                  <select
-                    value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none"
-                  >
-                    {paymentMethods.map((m) => (
-                      <option key={m.id} value={m.name}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select
+                      value={paymentMethod}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      className="w-full appearance-none bg-slate-900 border border-slate-700 rounded-xl pl-2.5 pr-7 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                    >
+                      {paymentMethods.map((m) => (
+                        <option key={m.id} value={m.name}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
                 </div>
               </div>
 

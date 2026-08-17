@@ -27,6 +27,9 @@ import {
   RotateCw,
   Smartphone,
   Share2,
+  BellRing,
+  Clock,
+  ChevronDown,
 } from "lucide-react";
 import { useAuth } from "@/lib/context/AuthContext";
 import { useFinance } from "@/lib/context/FinanceContext";
@@ -36,6 +39,11 @@ import { RecurringManagerModal } from "@/components/recurring/RecurringManagerMo
 import { PartnerModal } from "@/components/partner/PartnerModal";
 import { CategoryManagerModal } from "@/components/categories/CategoryManagerModal";
 import { createClient } from "@/lib/supabase/client";
+import {
+  sendLocalNotification,
+  requestNotificationPermission,
+  getNotificationPermission,
+} from "@/lib/notification";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -48,6 +56,7 @@ export default function SettingsPage() {
     setSpreadsheet,
     logout,
     loginWithGoogle,
+    updateProfile,
   } = useAuth();
   const { recurring, expenseCategories, paymentMethods, incomeCategories, syncStatus, syncNow } = useFinance();
   const { theme, setTheme } = useTheme();
@@ -58,10 +67,12 @@ export default function SettingsPage() {
   const [partnerModalTab, setPartnerModalTab] = useState<"invite" | "join">("invite");
   const [categoryModalTab, setCategoryModalTab] = useState<"expense_category" | "payment_method" | "income_category" | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [reminderTime, setReminderTime] = useState("20:00");
-  const [reminderActive, setReminderActive] = useState(true);
-  const [showReminderSettings, setShowReminderSettings] = useState(false);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>(() => getNotificationPermission());
+  const [testNotifSuccess, setTestNotifSuccess] = useState(false);
   const [activeCode, setActiveCode] = useState<string>(inviteCode || "");
+
+  const reminderTime = user?.reminderTime || "20:00";
+  const reminderActive = user?.reminderEnabled ?? true;
 
   const supabase = createClient();
 
@@ -124,6 +135,49 @@ export default function SettingsPage() {
     router.push("/onboarding");
   };
 
+  const handleToggleReminder = async (enabled: boolean) => {
+    if (enabled && notifPermission !== "granted") {
+      const perm = await requestNotificationPermission();
+      setNotifPermission(perm);
+    }
+    await updateProfile({ reminderEnabled: enabled });
+  };
+
+  const [currentHour, currentMinute] = (reminderTime || "20:00").split(":");
+
+  const handleHourChange = async (newHour: string) => {
+    const updated = `${newHour.padStart(2, "0")}:${currentMinute || "00"}`;
+    await updateProfile({ reminderTime: updated });
+  };
+
+  const handleMinuteChange = async (newMinute: string) => {
+    const updated = `${currentHour || "20"}:${newMinute.padStart(2, "0")}`;
+    await updateProfile({ reminderTime: updated });
+  };
+
+  const handleRequestPermission = async () => {
+    const perm = await requestNotificationPermission();
+    setNotifPermission(perm);
+  };
+
+  const handleSendTestNotification = async () => {
+    let perm = notifPermission;
+    if (perm !== "granted") {
+      perm = await requestNotificationPermission();
+      setNotifPermission(perm);
+    }
+
+    const sent = await sendLocalNotification("FinLog Pengingat Keuangan 🔔", {
+      body: `Halo ${user?.name || "Kawan"}! Jangan lupa catat pengeluaran hari ini untuk pertahankan streak 🔥`,
+      url: "/add",
+    });
+
+    if (sent) {
+      setTestNotifSuccess(true);
+      setTimeout(() => setTestNotifSuccess(false), 4000);
+    }
+  };
+
   const activeRecurringCount = recurring.filter((r) => r.isActive).length;
 
   return (
@@ -170,53 +224,7 @@ export default function SettingsPage() {
               <ChevronRight className="w-4 h-4 text-slate-400" />
             </div>
           </button>
-
-          <button
-            type="button"
-            onClick={() => setShowReminderSettings(!showReminderSettings)}
-            className="w-full p-3.5 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors text-left cursor-pointer"
-          >
-            <div className="flex items-center gap-3">
-              <Bell className="w-4 h-4 text-amber-500" />
-              <span className="text-xs font-semibold text-slate-900 dark:text-white">Reminder Harian</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-              <span>{reminderActive ? reminderTime : "Nonaktif"}</span>
-              <ChevronRight className="w-4 h-4 text-slate-400" />
-            </div>
-          </button>
         </div>
-
-        {/* Reminder Settings Dropdown */}
-        {showReminderSettings && (
-          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3 animate-in fade-in">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-900 dark:text-white">Aktifkan Reminder</span>
-              <button
-                type="button"
-                onClick={() => setReminderActive(!reminderActive)}
-                className={`w-10 h-5 rounded-full transition-colors relative p-0.5 ${
-                  reminderActive ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-700"
-                }`}
-              >
-                <div
-                  className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                    reminderActive ? "translate-x-5" : "translate-x-0"
-                  }`}
-                />
-              </button>
-            </div>
-            <div>
-              <label className="block text-[11px] text-slate-500 dark:text-slate-400 mb-1">Waktu Notifikasi</label>
-              <input
-                type="time"
-                value={reminderTime}
-                onChange={(e) => setReminderTime(e.target.value)}
-                className="bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-900 dark:text-white"
-              />
-            </div>
-          </div>
-        )}
       </div>
 
       {/* SECTION: KATEGORI & SUMBER */}
@@ -358,7 +366,7 @@ export default function SettingsPage() {
           </div>
 
           {/* Sync Status & Action Bar */}
-          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col items-center justify-between gap-2">
             <div className="flex items-center gap-2.5 min-w-0">
               <div
                 className={`w-2 h-2 rounded-full shrink-0 ${
@@ -460,6 +468,138 @@ export default function SettingsPage() {
               </button>
             );
           })}
+        </div>
+      </div>
+
+      {/* SECTION: PENGINGAT & NOTIFIKASI */}
+      <div className="space-y-2">
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">
+          Pengingat & Notifikasi
+        </p>
+        <div className="p-4 rounded-3xl bg-white dark:bg-[#0F162A] border border-slate-200 dark:border-slate-800 shadow-md space-y-3.5">
+          {/* Header & Toggle */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                <BellRing className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-slate-900 dark:text-white">Pengingat Harian</h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Notifikasi harian untuk mencatat pengeluaran
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleToggleReminder(!reminderActive)}
+              className={`w-11 h-6 rounded-full transition-colors relative p-0.5 cursor-pointer ${
+                reminderActive ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-700"
+              }`}
+            >
+              <div
+                className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform ${
+                  reminderActive ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </div>
+
+          {reminderActive && (
+            <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800/80 animate-in fade-in">
+              {/* Jam Pengingat (24 Jam) */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 font-semibold">
+                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Waktu Pengingat</span>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <div className="relative">
+                    <select
+                      value={currentHour || "20"}
+                      onChange={(e) => handleHourChange(e.target.value)}
+                      className="appearance-none bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl pl-2.5 pr-6 py-1 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                    >
+                      {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0")).map((h) => (
+                        <option key={h} value={h}>
+                          {h}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+
+                  <span className="font-bold text-slate-400">:</span>
+
+                  <div className="relative">
+                    <select
+                      value={currentMinute || "00"}
+                      onChange={(e) => handleMinuteChange(e.target.value)}
+                      className="appearance-none bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl pl-2.5 pr-6 py-1 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                    >
+                      {["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"].map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+
+                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
+                    24 Jam
+                  </span>
+                </div>
+              </div>
+
+              {/* Status Izin & Action Buttons */}
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 truncate">
+                    Status Izin Notifikasi
+                  </p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                    {notifPermission === "granted"
+                      ? "✅ Diizinkan di perangkat ini"
+                      : notifPermission === "denied"
+                      ? "❌ Diblokir browser (Buka setelan browser)"
+                      : "⚠️ Belum diizinkan"}
+                  </p>
+                </div>
+
+                {notifPermission !== "granted" && (
+                  <button
+                    type="button"
+                    onClick={handleRequestPermission}
+                    className="py-1 px-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-[11px] font-bold transition-all cursor-pointer shrink-0"
+                  >
+                    Izinkan
+                  </button>
+                )}
+              </div>
+
+              {/* Send Test Notification Button */}
+              <button
+                type="button"
+                onClick={handleSendTestNotification}
+                className="w-full py-2.5 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                {testNotifSuccess ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-500" />
+                    <span>Notifikasi Berhasil Terkirim! 🎉</span>
+                  </>
+                ) : (
+                  <>
+                    <Bell className="w-3.5 h-3.5" />
+                    <span>Kirim Test Notifikasi Sekarang</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
