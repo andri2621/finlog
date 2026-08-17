@@ -25,6 +25,7 @@ import { useFinance } from "@/lib/context/FinanceContext";
 import { formatIDR, getMonthDisplayName } from "@/lib/utils";
 import { BudgetModal } from "@/components/budget/BudgetModal";
 import { BudgetAlertBanner } from "@/components/budget/BudgetAlertBanner";
+import { UserFilterDropdown } from "@/components/ui/UserFilterDropdown";
 
 export default function ReportsPage() {
   const {
@@ -120,21 +121,24 @@ export default function ReportsPage() {
 
   return (
     <div className="p-4 space-y-4">
-      {/* HEADER & MONTH PICKER */}
-      <div className="flex items-center justify-between">
+      {/* HEADER & MONTH PICKER & USER FILTER */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
           <h1 className="text-xl font-extrabold text-white tracking-tight">Laporan Bulanan</h1>
           <p className="text-[11px] text-slate-400">Ringkasan finansial & anggaran</p>
         </div>
 
-        <div className="flex items-center gap-1.5 bg-[#0F162A] border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-300 font-semibold">
-          <Calendar className="w-3.5 h-3.5 text-emerald-400" />
-          <input
-            type="month"
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="bg-transparent text-xs text-white focus:outline-none cursor-pointer"
-          />
+        <div className="flex items-center gap-2">
+          <UserFilterDropdown />
+          <div className="flex items-center gap-1.5 bg-[#0F162A] border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-300 font-semibold">
+            <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="bg-transparent text-xs text-white focus:outline-none cursor-pointer"
+            />
+          </div>
         </div>
       </div>
 

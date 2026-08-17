@@ -21,6 +21,24 @@ export const SHEETS_TABS = {
   CONFIG: "Config",
 };
 
+export class GoogleAuthError extends Error {
+  status: number;
+  constructor(message = "Google Token Expired or Unauthorized") {
+    super(message);
+    this.name = "GoogleAuthError";
+    this.status = 401;
+  }
+}
+
+async function sheetsFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const res = await fetch(input, init);
+  if (res.status === 401 || res.status === 403) {
+    const error = new GoogleAuthError(`Google API ${res.status}: ${res.statusText}`);
+    throw error;
+  }
+  return res;
+}
+
 /**
  * Creates the standard FinLog multi-tab spreadsheet in user's Google Drive.
  */
@@ -29,7 +47,7 @@ export async function createFinLogSpreadsheet(
   title: string = "FINLOG",
   initialCategories?: CategoryConfig[]
 ): Promise<{ spreadsheetId: string; spreadsheetUrl: string }> {
-  const response = await fetch("https://sheets.googleapis.com/v4/spreadsheets", {
+  const response = await sheetsFetch("https://sheets.googleapis.com/v4/spreadsheets", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -120,7 +138,7 @@ export async function populateInitialCategories(
   ]);
 
   try {
-    await fetch(
+    await sheetsFetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.CONFIG}!A2:F${rows.length + 1}?valueInputOption=USER_ENTERED`,
       {
         method: "PUT",
@@ -184,7 +202,7 @@ export async function initializeSheetHeaders(accessToken: string, spreadsheetId:
           "Tanggal",
           "Savings ID",
           "Nama Target",
-          "Tempat Dana",
+          "Tempat Uang / Pocket",
           "Jumlah",
           "Dicatat Oleh",
           "Created At",
@@ -214,7 +232,7 @@ export async function initializeSheetHeaders(accessToken: string, spreadsheetId:
     },
   ];
 
-  await fetch(
+  await sheetsFetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`,
     {
       method: "POST",
@@ -252,7 +270,7 @@ export async function appendTransactionToSheet(
     tx.updatedAt,
   ];
 
-  const response = await fetch(
+  const response = await sheetsFetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.TRANSACTIONS}!A:J:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
     {
       method: "POST",
@@ -274,7 +292,7 @@ export async function updateTransactionInSheet(
   spreadsheetId: string,
   tx: Transaction
 ): Promise<boolean> {
-  const readResponse = await fetch(
+  const readResponse = await sheetsFetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.TRANSACTIONS}!A2:A`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
@@ -303,7 +321,7 @@ export async function updateTransactionInSheet(
     tx.updatedAt,
   ];
 
-  const updateResponse = await fetch(
+  const updateResponse = await sheetsFetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
     {
       method: "PUT",
@@ -327,7 +345,7 @@ export async function fetchTransactionsFromSheet(
   accessToken: string,
   spreadsheetId: string
 ): Promise<Transaction[]> {
-  const response = await fetch(
+  const response = await sheetsFetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.TRANSACTIONS}!A2:J`,
     {
       headers: {
@@ -365,7 +383,7 @@ export async function saveBudgetToSheet(
   spreadsheetId: string,
   budget: Budget
 ): Promise<boolean> {
-  const readResponse = await fetch(
+  const readResponse = await sheetsFetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.BUDGETS}!A2:A`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
@@ -378,7 +396,7 @@ export async function saveBudgetToSheet(
   const row = [budget.id, budget.month, budget.category, budget.limitAmount];
 
   if (rowIndex === -1) {
-    const appendResponse = await fetch(
+    const appendResponse = await sheetsFetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.BUDGETS}!A:D:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
       {
         method: "POST",
@@ -391,7 +409,7 @@ export async function saveBudgetToSheet(
 
   const sheetRow = rowIndex + 2;
   const range = `${SHEETS_TABS.BUDGETS}!A${sheetRow}:D${sheetRow}`;
-  const updateResponse = await fetch(
+  const updateResponse = await sheetsFetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
     {
       method: "PUT",
@@ -414,7 +432,7 @@ export async function fetchBudgetsFromSheet(
   accessToken: string,
   spreadsheetId: string
 ): Promise<Budget[]> {
-  const response = await fetch(
+  const response = await sheetsFetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.BUDGETS}!A2:D`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
@@ -439,7 +457,7 @@ export async function saveSavingsToSheet(
   spreadsheetId: string,
   savings: SavingsGoal
 ): Promise<boolean> {
-  const readResponse = await fetch(
+  const readResponse = await sheetsFetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.SAVINGS}!A2:A`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
@@ -460,7 +478,7 @@ export async function saveSavingsToSheet(
   ];
 
   if (rowIndex === -1) {
-    const appendResponse = await fetch(
+    const appendResponse = await sheetsFetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.SAVINGS}!A:G:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
       {
         method: "POST",
@@ -473,7 +491,7 @@ export async function saveSavingsToSheet(
 
   const sheetRow = rowIndex + 2;
   const range = `${SHEETS_TABS.SAVINGS}!A${sheetRow}:G${sheetRow}`;
-  const updateResponse = await fetch(
+  const updateResponse = await sheetsFetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
     {
       method: "PUT",
@@ -496,7 +514,7 @@ export async function fetchSavingsFromSheet(
   accessToken: string,
   spreadsheetId: string
 ): Promise<SavingsGoal[]> {
-  const response = await fetch(
+  const response = await sheetsFetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.SAVINGS}!A2:G`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
@@ -535,7 +553,7 @@ export async function appendSavingsLogToSheet(
     log.createdAt,
   ];
 
-  const response = await fetch(
+  const response = await sheetsFetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.SAVINGS_LOGS}!A:H:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
     {
       method: "POST",
@@ -550,7 +568,7 @@ export async function fetchSavingsLogsFromSheet(
   accessToken: string,
   spreadsheetId: string
 ): Promise<SavingsLog[]> {
-  const response = await fetch(
+  const response = await sheetsFetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.SAVINGS_LOGS}!A2:H`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
@@ -579,7 +597,7 @@ export async function saveRecurringToSheet(
   spreadsheetId: string,
   rec: RecurringExpense
 ): Promise<boolean> {
-  const readResponse = await fetch(
+  const readResponse = await sheetsFetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.RECURRING}!A2:A`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
@@ -603,7 +621,7 @@ export async function saveRecurringToSheet(
   ];
 
   if (rowIndex === -1) {
-    const appendResponse = await fetch(
+    const appendResponse = await sheetsFetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.RECURRING}!A:J:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
       {
         method: "POST",
@@ -616,7 +634,7 @@ export async function saveRecurringToSheet(
 
   const sheetRow = rowIndex + 2;
   const range = `${SHEETS_TABS.RECURRING}!A${sheetRow}:J${sheetRow}`;
-  const updateResponse = await fetch(
+  const updateResponse = await sheetsFetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
     {
       method: "PUT",
@@ -639,7 +657,7 @@ export async function fetchRecurringFromSheet(
   accessToken: string,
   spreadsheetId: string
 ): Promise<RecurringExpense[]> {
-  const response = await fetch(
+  const response = await sheetsFetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.RECURRING}!A2:J`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
@@ -670,7 +688,7 @@ export async function saveCategoryToSheet(
   spreadsheetId: string,
   cat: CategoryConfig
 ): Promise<boolean> {
-  const readResponse = await fetch(
+  const readResponse = await sheetsFetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.CONFIG}!A2:A`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
@@ -683,7 +701,7 @@ export async function saveCategoryToSheet(
   const row = [cat.id, cat.type, cat.name, cat.color, cat.icon || "Tag", cat.order];
 
   if (rowIndex === -1) {
-    const appendResponse = await fetch(
+    const appendResponse = await sheetsFetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.CONFIG}!A:F:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
       {
         method: "POST",
@@ -696,7 +714,7 @@ export async function saveCategoryToSheet(
 
   const sheetRow = rowIndex + 2;
   const range = `${SHEETS_TABS.CONFIG}!A${sheetRow}:F${sheetRow}`;
-  const updateResponse = await fetch(
+  const updateResponse = await sheetsFetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
     {
       method: "PUT",
@@ -719,7 +737,7 @@ export async function fetchCategoriesFromSheet(
   accessToken: string,
   spreadsheetId: string
 ): Promise<CategoryConfig[]> {
-  const response = await fetch(
+  const response = await sheetsFetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.CONFIG}!A2:F`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
@@ -748,7 +766,7 @@ async function deleteRowByTabAndId(
   recordId: string
 ): Promise<boolean> {
   try {
-    const metaResponse = await fetch(
+    const metaResponse = await sheetsFetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
@@ -759,7 +777,7 @@ async function deleteRowByTabAndId(
     if (!targetSheet) return false;
     const sheetId = targetSheet.properties.sheetId;
 
-    const readResponse = await fetch(
+    const readResponse = await sheetsFetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${tabTitle}!A2:A`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
@@ -771,7 +789,7 @@ async function deleteRowByTabAndId(
 
     const sheetRowIndex = rowIndex + 1; // 0-indexed for batchUpdate (excluding header row index 0)
 
-    const deleteResponse = await fetch(
+    const deleteResponse = await sheetsFetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
       {
         method: "POST",

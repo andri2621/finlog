@@ -35,6 +35,9 @@ interface FinanceContextType {
   syncStatus: SyncStatus;
   selectedMonth: string;
   setSelectedMonth: (month: string) => void;
+  selectedUserFilter: "all" | "me" | "partner";
+  setSelectedUserFilter: (filter: "all" | "me" | "partner") => void;
+  allCurrentMonthTransactions: Transaction[];
   
   // Financial metrics for selected month
   totalExpenseMonth: number;
@@ -45,6 +48,13 @@ interface FinanceContextType {
   overallBudgetPercent: number;
   isBudgetWarning80: boolean;
   isBudgetExceeded100: boolean;
+
+  // Account / Tempat Uang Balances
+  pocketBalances: Record<string, number>;
+  getPocketBalance: (name: string) => number;
+  totalPocketBalance: number;
+  totalSavingsBalance: number;
+  totalNetWorth: number;
   
   // Actions
   addTransaction: (tx: Omit<Transaction, "id" | "recordedBy" | "createdAt" | "updatedAt">) => Promise<Transaction>;
@@ -57,6 +67,8 @@ interface FinanceContextType {
   setBudget: (category: string, amount: number, month?: string) => Promise<void>;
   deleteBudget: (id: string) => Promise<void>;
   addSavingsGoal: (goal: Omit<SavingsGoal, "id" | "currentAmount">) => Promise<void>;
+  updateSavingsGoal: (id: string, updates: Partial<SavingsGoal>) => Promise<void>;
+  deleteSavingsGoal: (id: string) => Promise<void>;
   depositSavings: (savingsId: string, amount: number, pocket: string) => Promise<void>;
   addRecurringExpense: (rec: Omit<RecurringExpense, "id" | "isActive">) => Promise<void>;
   toggleRecurringExpense: (id: string, active: boolean) => Promise<void>;
@@ -64,6 +76,11 @@ interface FinanceContextType {
   
   // Category management
   addCategoryItem: (type: CategoryConfig["type"], name: string, color: string, icon?: string) => Promise<void>;
+  updateCategoryItem: (
+    id: string,
+    updates: Partial<Pick<CategoryConfig, "name" | "color" | "icon" | "order">>
+  ) => Promise<void>;
+  reorderCategoryItems: (type: CategoryConfig["type"], orderedIds: string[]) => Promise<void>;
   deleteCategoryItem: (id: string) => Promise<void>;
   
   syncNow: () => Promise<void>;
@@ -72,8 +89,9 @@ interface FinanceContextType {
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
 
 export function FinanceProvider({ children }: { children: React.ReactNode }) {
-  const { user, accessToken, spreadsheetId } = useAuth();
+  const { user, partner, accessToken, spreadsheetId, refreshGoogleToken } = useAuth();
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthString());
+  const [selectedUserFilter, setSelectedUserFilter] = useState<"all" | "me" | "partner">("all");
   const [lastSavedTransaction, setLastSavedTransaction] = useState<Transaction | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({
     isOnline: true,
@@ -155,13 +173,14 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, []);
 
-  // Update syncEngine credentials
+  // Update syncEngine credentials & register token refresh handler
   useEffect(() => {
     syncEngine.setCredentials(accessToken || null, spreadsheetId || null);
+    syncEngine.setTokenRefreshHandler(refreshGoogleToken);
     if (accessToken && spreadsheetId) {
       syncEngine.syncNow().catch(console.error);
     }
-  }, [accessToken, spreadsheetId]);
+  }, [accessToken, spreadsheetId, refreshGoogleToken]);
 
   // Check recurring on startup
   useEffect(() => {
@@ -170,28 +189,125 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user?.name]);
 
-  // Derived categorized configs
+  // Derived categorized configs (sorted by order)
   const expenseCategories = useMemo(
-    () => categories.filter((c) => c.type === "expense_category"),
+    () =>
+      categories
+        .filter((c) => c.type === "expense_category")
+        .sort((a, b) => (a.order || 0) - (b.order || 0)),
     [categories]
   );
   const incomeCategories = useMemo(
-    () => categories.filter((c) => c.type === "income_category"),
+    () =>
+      categories
+        .filter((c) => c.type === "income_category")
+        .sort((a, b) => (a.order || 0) - (b.order || 0)),
     [categories]
   );
   const paymentMethods = useMemo(
-    () => categories.filter((c) => c.type === "payment_method"),
+    () =>
+      categories
+        .filter((c) => c.type === "payment_method")
+        .sort((a, b) => (a.order || 0) - (b.order || 0)),
     [categories]
   );
-  const pockets = useMemo(
-    () => categories.filter((c) => c.type === "pocket"),
-    [categories]
-  );
+  
+  // Pockets are unified with payment methods (Bank, E-Wallet, Cash)
+  const pockets = useMemo(() => {
+    const seen = new Set<string>();
+    const list: CategoryConfig[] = [];
+    categories.forEach((c) => {
+      if (c.type === "payment_method" || c.type === "pocket") {
+        const key = c.name.toLowerCase().trim();
+        if (!seen.has(key)) {
+          seen.add(key);
+          list.push(c);
+        }
+      }
+    });
+    return list;
+  }, [categories]);
 
-  // Filter transactions for selected month
-  const currentMonthTransactions = useMemo(() => {
+  // Live balance calculation for each pocket / payment method
+  const pocketBalances = useMemo(() => {
+    const balances: Record<string, number> = {};
+
+    pockets.forEach((p) => {
+      balances[p.name] = 0;
+    });
+
+    // Income adds, Expense subtracts
+    transactions.forEach((tx) => {
+      if (tx.paymentMethod) {
+        if (balances[tx.paymentMethod] === undefined) {
+          balances[tx.paymentMethod] = 0;
+        }
+        if (tx.type === "income") {
+          balances[tx.paymentMethod] += tx.amount;
+        } else if (tx.type === "expense") {
+          balances[tx.paymentMethod] -= tx.amount;
+        }
+      }
+    });
+
+    // Savings deposits subtract from available pocket balance
+    savingsLogs.forEach((log) => {
+      if (log.pocket) {
+        if (balances[log.pocket] === undefined) {
+          balances[log.pocket] = 0;
+        }
+        balances[log.pocket] -= log.amount;
+      }
+    });
+
+    return balances;
+  }, [pockets, transactions, savingsLogs]);
+
+  const getPocketBalance = (name: string) => {
+    return pocketBalances[name] || 0;
+  };
+
+  const totalSavingsBalance = useMemo(() => {
+    return savings.reduce((sum, g) => sum + g.currentAmount, 0);
+  }, [savings]);
+
+  const totalPocketBalance = useMemo(() => {
+    return Object.values(pocketBalances).reduce((sum, b) => sum + b, 0);
+  }, [pocketBalances]);
+
+  const totalNetWorth = useMemo(() => {
+    return totalPocketBalance + totalSavingsBalance;
+  }, [totalPocketBalance, totalSavingsBalance]);
+
+  // All transactions for selected month (unfiltered by user)
+  const allCurrentMonthTransactions = useMemo(() => {
     return transactions.filter((tx) => tx.date.startsWith(selectedMonth));
   }, [transactions, selectedMonth]);
+
+  // Filter transactions for selected month based on selectedUserFilter ("all" | "me" | "partner")
+  const currentMonthTransactions = useMemo(() => {
+    return allCurrentMonthTransactions.filter((tx) => {
+      if (selectedUserFilter === "all") return true;
+      const rec = (tx.recordedBy || "").trim().toLowerCase();
+      const meName = (user?.name || "").trim().toLowerCase();
+      const meEmail = (user?.email || "").trim().toLowerCase();
+      const partnerName = (partner?.name || "").trim().toLowerCase();
+      const partnerEmail = (partner?.email || "").trim().toLowerCase();
+
+      const isMe = Boolean((meName && rec === meName) || (meEmail && rec === meEmail));
+      const isPartner = Boolean((partnerName && rec === partnerName) || (partnerEmail && rec === partnerEmail) || (!isMe && rec !== ""));
+
+      if (selectedUserFilter === "me") {
+        if (!isMe && meName) return false;
+        return true;
+      }
+      if (selectedUserFilter === "partner") {
+        if (!isPartner) return false;
+        return true;
+      }
+      return true;
+    });
+  }, [allCurrentMonthTransactions, selectedUserFilter, user?.name, user?.email, partner?.name, partner?.email]);
 
   // Filter budgets for selected month
   const currentMonthBudgets = useMemo(() => {
@@ -215,16 +331,38 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     return totalIncomeMonth - totalExpenseMonth;
   }, [totalIncomeMonth, totalExpenseMonth]);
 
-  // All time net balance
+  // All time net balance (filtered by selectedUserFilter)
   const totalAllTimeBalance = useMemo(() => {
-    const totalInc = transactions
+    const txs = transactions.filter((tx) => {
+      if (selectedUserFilter === "all") return true;
+      const rec = (tx.recordedBy || "").trim().toLowerCase();
+      const meName = (user?.name || "").trim().toLowerCase();
+      const meEmail = (user?.email || "").trim().toLowerCase();
+      const partnerName = (partner?.name || "").trim().toLowerCase();
+      const partnerEmail = (partner?.email || "").trim().toLowerCase();
+
+      const isMe = Boolean((meName && rec === meName) || (meEmail && rec === meEmail));
+      const isPartner = Boolean((partnerName && rec === partnerName) || (partnerEmail && rec === partnerEmail) || (!isMe && rec !== ""));
+
+      if (selectedUserFilter === "me") {
+        if (!isMe && meName) return false;
+        return true;
+      }
+      if (selectedUserFilter === "partner") {
+        if (!isPartner) return false;
+        return true;
+      }
+      return true;
+    });
+
+    const totalInc = txs
       .filter((tx) => tx.type === "income")
       .reduce((s, tx) => s + tx.amount, 0);
-    const totalExp = transactions
+    const totalExp = txs
       .filter((tx) => tx.type === "expense")
       .reduce((s, tx) => s + tx.amount, 0);
     return totalInc - totalExp;
-  }, [transactions]);
+  }, [transactions, selectedUserFilter, user?.name, partner?.name]);
 
   // Overall budget metrics
   const overallBudget = useMemo(() => {
@@ -341,6 +479,34 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     syncEngine.syncNow().catch(console.error);
   };
 
+  const updateSavingsGoal = async (id: string, updates: Partial<SavingsGoal>) => {
+    const existing = await db.savings.get(id);
+    if (!existing) return;
+
+    const merged: SavingsGoal = { ...existing, ...updates };
+    await db.savings.put(merged);
+
+    // If name changed, cascade update to savings_logs
+    if (updates.name && updates.name !== existing.name) {
+      const logs = await db.savings_logs.where("savingsId").equals(id).toArray();
+      for (const log of logs) {
+        await db.savings_logs.put({ ...log, savingsName: updates.name });
+      }
+    }
+
+    await syncEngine.queueAction("update", "savings", merged);
+    syncEngine.syncNow().catch(console.error);
+  };
+
+  const deleteSavingsGoal = async (id: string) => {
+    const existing = await db.savings.get(id);
+    if (!existing) return;
+
+    await db.savings.delete(id);
+    await syncEngine.queueAction("delete", "savings", { id });
+    syncEngine.syncNow().catch(console.error);
+  };
+
   const depositSavings = async (savingsId: string, amount: number, pocket: string) => {
     const goal = await db.savings.get(savingsId);
     if (!goal) return;
@@ -414,6 +580,74 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     syncEngine.syncNow().catch(console.error);
   };
 
+  const updateCategoryItem = async (
+    id: string,
+    updates: Partial<Pick<CategoryConfig, "name" | "color" | "icon" | "order">>
+  ) => {
+    const existing = await db.categories.get(id);
+    if (!existing) return;
+
+    const oldName = existing.name;
+    await db.categories.update(id, updates);
+    const updated = await db.categories.get(id);
+    if (updated) {
+      await syncEngine.queueAction("update", "config", updated);
+      syncEngine.syncNow().catch(console.error);
+    }
+
+    // Cascade rename to existing transactions and budgets if name changed
+    if (updates.name && updates.name !== oldName) {
+      const newName = updates.name;
+      if (existing.type === "expense_category") {
+        const affectedTxs = await db.transactions.where("category").equals(oldName).toArray();
+        for (const tx of affectedTxs) {
+          await db.transactions.update(tx.id, { category: newName });
+          const upTx = await db.transactions.get(tx.id);
+          if (upTx) await syncEngine.queueAction("update", "transactions", upTx);
+        }
+        const affectedBudgets = await db.budgets.where("category").equals(oldName).toArray();
+        for (const bgt of affectedBudgets) {
+          await db.budgets.update(bgt.id, { category: newName });
+          const upBgt = await db.budgets.get(bgt.id);
+          if (upBgt) await syncEngine.queueAction("update", "budgets", upBgt);
+        }
+      } else if (existing.type === "income_category") {
+        const affectedTxs = await db.transactions.where("category").equals(oldName).toArray();
+        for (const tx of affectedTxs) {
+          await db.transactions.update(tx.id, { category: newName });
+          const upTx = await db.transactions.get(tx.id);
+          if (upTx) await syncEngine.queueAction("update", "transactions", upTx);
+        }
+      } else if (existing.type === "payment_method" || existing.type === "pocket") {
+        const affectedTxs = await db.transactions.where("paymentMethod").equals(oldName).toArray();
+        for (const tx of affectedTxs) {
+          await db.transactions.update(tx.id, { paymentMethod: newName });
+          const upTx = await db.transactions.get(tx.id);
+          if (upTx) await syncEngine.queueAction("update", "transactions", upTx);
+        }
+        const affectedLogs = await db.savings_logs.where("pocket").equals(oldName).toArray();
+        for (const log of affectedLogs) {
+          await db.savings_logs.update(log.id, { pocket: newName });
+          const upLog = await db.savings_logs.get(log.id);
+          if (upLog) await syncEngine.queueAction("update", "savings_logs", upLog);
+        }
+      }
+    }
+  };
+
+  const reorderCategoryItems = async (type: CategoryConfig["type"], orderedIds: string[]) => {
+    for (let i = 0; i < orderedIds.length; i++) {
+      const id = orderedIds[i];
+      const order = i + 1;
+      await db.categories.update(id, { order });
+      const updated = await db.categories.get(id);
+      if (updated) {
+        await syncEngine.queueAction("update", "config", updated);
+      }
+    }
+    syncEngine.syncNow().catch(console.error);
+  };
+
   const deleteCategoryItem = async (id: string) => {
     await db.categories.delete(id);
     await syncEngine.queueAction("delete", "config", { id });
@@ -442,6 +676,9 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         syncStatus,
         selectedMonth,
         setSelectedMonth,
+        selectedUserFilter,
+        setSelectedUserFilter,
+        allCurrentMonthTransactions,
         totalExpenseMonth,
         totalIncomeMonth,
         netBalanceMonth,
@@ -450,6 +687,11 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         overallBudgetPercent,
         isBudgetWarning80,
         isBudgetExceeded100,
+        pocketBalances,
+        getPocketBalance,
+        totalPocketBalance,
+        totalSavingsBalance,
+        totalNetWorth,
         addTransaction,
         updateTransaction,
         deleteTransaction,
@@ -459,11 +701,15 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         setBudget,
         deleteBudget,
         addSavingsGoal,
+        updateSavingsGoal,
+        deleteSavingsGoal,
         depositSavings,
         addRecurringExpense,
         toggleRecurringExpense,
         deleteRecurringExpense,
         addCategoryItem,
+        updateCategoryItem,
+        reorderCategoryItems,
         deleteCategoryItem,
         syncNow,
       }}

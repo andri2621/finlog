@@ -45,8 +45,21 @@ export function generateId(prefix = "id"): string {
 }
 
 // Date helpers
+export function parseLocalDate(dateStr: string | Date): Date {
+  if (dateStr instanceof Date) return dateStr;
+  if (!dateStr || typeof dateStr !== "string") return new Date();
+  const parts = dateStr.split("T")[0].split("-");
+  if (parts.length === 3) {
+    const [y, m, d] = parts.map(Number);
+    if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+      return new Date(y, m - 1, d);
+    }
+  }
+  return new Date(dateStr);
+}
+
 export function formatDateIndo(dateStr: string | Date): string {
-  const d = typeof dateStr === "string" ? new Date(dateStr) : dateStr;
+  const d = parseLocalDate(dateStr);
   if (isNaN(d.getTime())) return "";
   
   const days = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
@@ -64,7 +77,7 @@ export function formatDateIndo(dateStr: string | Date): string {
 }
 
 export function formatDateGroup(dateStr: string): string {
-  const d = new Date(dateStr);
+  const d = parseLocalDate(dateStr);
   if (isNaN(d.getTime())) return dateStr;
   
   const fullDays = [

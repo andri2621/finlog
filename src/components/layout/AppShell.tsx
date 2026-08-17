@@ -15,10 +15,10 @@ import {
   Users,
   ChevronDown,
   LogOut,
+  Smartphone,
 } from "lucide-react";
 import { useAuth } from "@/lib/context/AuthContext";
 import { useFinance } from "@/lib/context/FinanceContext";
-import { ReceiptScannerModal } from "@/components/scanner/ReceiptScannerModal";
 import { PartnerModal } from "@/components/partner/PartnerModal";
 import { useRouter } from "next/navigation";
 
@@ -35,6 +35,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isPublicPage =
     pathname === "/login" ||
     pathname === "/onboarding" ||
+    pathname === "/how-to-install" ||
     pathname.startsWith("/invite/") ||
     pathname.startsWith("/auth/");
   const isAuthenticated = Boolean(user);
@@ -107,6 +108,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       return (
         <div className="min-h-screen bg-[var(--background)] flex flex-col items-center justify-center">
           <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      );
+    }
+
+    if (pathname === "/how-to-install") {
+      return (
+        <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] selection:bg-emerald-500/30 selection:text-emerald-300">
+          <main className="min-h-screen">{children}</main>
         </div>
       );
     }
@@ -254,6 +263,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       <span>Ajak Pasangan Baru</span>
                     </button>
 
+                    <Link
+                      href="/how-to-install"
+                      onClick={() => setShowUserMenu(false)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60 rounded-xl transition-colors cursor-pointer touch-manipulation"
+                    >
+                      <Smartphone className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>Cara Install Aplikasi (PWA)</span>
+                    </Link>
+
                     <button
                       type="button"
                       onClick={() => {
@@ -274,9 +292,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* MAIN SCROLLABLE CONTENT */}
         <main className="flex-1 pb-24 overflow-y-auto">{children}</main>
-
-        {/* FLOATING ACTION BUTTON (SCAN STRUK) */}
-        <ReceiptScannerModal />
 
         {/* BOTTOM NAVIGATION BAR */}
         <nav className="fixed bottom-0 w-full max-w-md bg-white/95 dark:bg-[var(--background)]/95 backdrop-blur-lg border-t border-slate-200 dark:border-[var(--border-color)] px-2 py-2 flex items-center justify-around z-40">

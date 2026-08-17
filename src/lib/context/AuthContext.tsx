@@ -241,6 +241,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     init();
 
+    // ─── PROACTIVE AUTO-REFRESH GOOGLE TOKEN ───
+    const checkAndRefreshToken = async () => {
+      const stored = localStorage.getItem(TOKEN_STORAGE_KEY);
+      if (!stored) {
+        await refreshGoogleToken();
+        return;
+      }
+      try {
+        const { expiresAt } = JSON.parse(stored);
+        // If expired or expiring within 10 minutes, silently refresh
+        if (Date.now() >= expiresAt - 10 * 60 * 1000) {
+          await refreshGoogleToken();
+        }
+      } catch {
+        await refreshGoogleToken();
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        checkAndRefreshToken();
+      }
+    };
+
+    const interval = setInterval(checkAndRefreshToken, 5 * 60 * 1000);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", onVisibilityChange);
+
     // Listen to Supabase Auth state changes
     const {
       data: { subscription },
@@ -309,6 +337,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       subscription.unsubscribe();
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", onVisibilityChange);
     };
   }, [refreshGoogleToken, saveToken, supabase]);
 

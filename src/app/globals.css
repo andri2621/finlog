@@ -89,3 +89,17 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 html.light input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(0.2);
 }
+
+@keyframes stepProgress {
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+.animate-step-progress {
+  animation: stepProgress 3.2s linear forwards;
+}
+

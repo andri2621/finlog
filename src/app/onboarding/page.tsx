@@ -15,11 +15,16 @@ import {
   Zap,
   Clock,
   AlertCircle,
+  Heart,
+  Users,
+  RotateCw,
 } from "lucide-react";
 import { useAuth } from "@/lib/context/AuthContext";
 import { useFinance } from "@/lib/context/FinanceContext";
 import { createFinLogSpreadsheet } from "@/lib/google/sheets";
 import { db } from "@/lib/db/db";
+import { createClient } from "@/lib/supabase/client";
+import confetti from "canvas-confetti";
 
 const COLOR_PALETTE = [
   "#EF4444", "#F97316", "#F59E0B", "#EAB308", "#84CC16", "#22C55E",
@@ -31,13 +36,20 @@ export default function OnboardingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const inviteSheetId = searchParams.get("sheetId");
+  const inviteCodeParam = searchParams.get("invite_code") || searchParams.get("code") || "";
   const { setSpreadsheet, updateProfile, logout, accessToken } = useAuth();
   const { expenseCategories, paymentMethods, incomeCategories, syncNow } = useFinance();
+  const supabase = createClient();
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
-  const [sheetMode, setSheetMode] = useState<"new" | "existing">(inviteSheetId ? "existing" : "new");
+  const [sheetMode, setSheetMode] = useState<"new" | "partner_code" | "existing">(() => {
+    if (inviteCodeParam) return "partner_code";
+    if (inviteSheetId) return "existing";
+    return "new";
+  });
   const [sheetName, setSheetName] = useState("FinLog");
   const [existingSheetUrl, setExistingSheetUrl] = useState(inviteSheetId || "");
+  const [partnerCode, setPartnerCode] = useState(inviteCodeParam);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -137,6 +149,103 @@ export default function OnboardingPage() {
     setNewIncName("");
     const nextIdx = (COLOR_PALETTE.indexOf(newIncColor) + 1) % COLOR_PALETTE.length;
     setNewIncColor(COLOR_PALETTE[nextIdx]);
+  };
+
+  // ─── INSTANT CONNECT FOR PARTNER INVITE CODE ───
+  const handleConnectPartnerCode = async () => {
+    const formatted = partnerCode.trim().toUpperCase();
+    if (!formatted) {
+      setErrorMessage("Masukkan kode undangan pasangan (contoh: FIN-7A2B).");
+      return;
+    }
+
+    setIsProcessing(true);
+    setErrorMessage("");
+
+    try {
+      // 1. Check RPC get_invite_details or partner_invites table
+      let targetInvite: any = null;
+      const { data: rpcData, error: rpcErr } = await supabase.rpc("get_invite_details", {
+        p_invite_code: formatted,
+      });
+
+      if (!rpcErr && rpcData && rpcData.spreadsheet_id) {
+        targetInvite = rpcData;
+      } else {
+        const { data, error: selectErr } = await supabase
+          .from("partner_invites")
+          .select("id, inviter_id, invite_code, spreadsheet_id, spreadsheet_name, status")
+          .eq("invite_code", formatted)
+          .eq("status", "active")
+          .maybeSingle();
+
+        if (selectErr || !data) {
+          setErrorMessage("Kode undangan tidak ditemukan atau sudah tidak aktif.");
+          setIsProcessing(false);
+          return;
+        }
+        targetInvite = data;
+      }
+
+      // 2. Link in Supabase profile
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+
+      if (authUser) {
+        if (targetInvite.inviter_id === authUser.id) {
+          setErrorMessage("Ini adalah kode Anda sendiri. Masukkan kode dari pasangan Anda.");
+          setIsProcessing(false);
+          return;
+        }
+
+        await supabase
+          .from("profiles")
+          .update({
+            partner_id: targetInvite.inviter_id,
+            spreadsheet_id: targetInvite.spreadsheet_id,
+            spreadsheet_name: targetInvite.spreadsheet_name || "FINLOG",
+            onboarding_completed: true,
+          })
+          .eq("id", authUser.id);
+
+        await supabase
+          .from("profiles")
+          .update({
+            partner_id: authUser.id,
+          })
+          .eq("id", targetInvite.inviter_id);
+      }
+
+      // 3. Clear local mock data & set spreadsheet
+      await db.transactions.clear();
+      await db.savings.clear();
+      await db.budgets.clear();
+
+      await setSpreadsheet(targetInvite.spreadsheet_id, targetInvite.spreadsheet_name || "FINLOG");
+      await updateProfile({
+        reminderEnabled,
+        reminderTime,
+      });
+
+      // 4. Initial pull from partner's spreadsheet
+      await syncNow().catch(() => {});
+
+      confetti({
+        particleCount: 60,
+        spread: 80,
+        origin: { y: 0.6 },
+        colors: ["#EC4899", "#10B981", "#3B82F6"],
+      });
+
+      setTimeout(() => {
+        router.replace("/");
+      }, 1000);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMessage(err.message || "Gagal menghubungkan akun pasangan.");
+      setIsProcessing(false);
+    }
   };
 
   // ─── INSTANT CONNECT FOR EXISTING SPREADSHEET (NO WIZARD) ───
@@ -282,28 +391,43 @@ export default function OnboardingPage() {
           <div className="space-y-4">
             <div>
               <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
-                Hubungkan Google Spreadsheet
+                Mulai Setup FinLog
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Semua data tersimpan otomatis di Google Drive Anda secara real-time.
+                Pilih opsi di bawah untuk mengatur penyimpanan Google Spreadsheet Anda.
               </p>
             </div>
 
-            {/* Mode Selection Toggle */}
-            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
+            {/* Mode Selection 3-Option Toggle */}
+            <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
               <button
                 type="button"
                 onClick={() => {
                   setErrorMessage("");
                   setSheetMode("new");
                 }}
-                className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`py-2 px-1 text-[11px] font-bold rounded-xl transition-all cursor-pointer truncate ${
                   sheetMode === "new"
                     ? "bg-emerald-500 text-slate-950 shadow-md"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
-                Buat Sheet Baru
+                Buat Baru
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setErrorMessage("");
+                  setSheetMode("partner_code");
+                }}
+                className={`py-2 px-1 text-[11px] font-bold rounded-xl transition-all cursor-pointer truncate flex items-center justify-center gap-1 ${
+                  sheetMode === "partner_code"
+                    ? "bg-pink-500 text-slate-950 shadow-md"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                <Heart className="w-3 h-3 fill-current" />
+                <span>Gabung Pasangan</span>
               </button>
               <button
                 type="button"
@@ -311,15 +435,49 @@ export default function OnboardingPage() {
                   setErrorMessage("");
                   setSheetMode("existing");
                 }}
-                className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`py-2 px-1 text-[11px] font-bold rounded-xl transition-all cursor-pointer truncate ${
                   sheetMode === "existing"
                     ? "bg-emerald-500 text-slate-950 shadow-md"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
-                Gunakan yang Ada
+                Sheet Ada
               </button>
             </div>
+
+            {/* MODE: PARTNER CODE */}
+            {sheetMode === "partner_code" && (
+              <div className="space-y-3 pt-2 animate-in fade-in duration-200">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
+                    Kode Undangan Pasangan:
+                  </label>
+                  <div className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-pink-500/40 rounded-2xl px-3.5 py-3 shadow-sm focus-within:border-pink-500">
+                    <Heart className="w-4 h-4 text-pink-500 shrink-0" />
+                    <input
+                      type="text"
+                      value={partnerCode}
+                      onChange={(e) => {
+                        setErrorMessage("");
+                        setPartnerCode(e.target.value.toUpperCase());
+                      }}
+                      placeholder="Contoh: FIN-7A2B atau 7A2B"
+                      className="w-full bg-transparent text-sm font-mono font-extrabold text-pink-500 tracking-wider placeholder:tracking-normal placeholder:font-normal placeholder:text-xs placeholder:text-slate-400 focus:outline-none uppercase"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-gradient-to-br from-pink-500/10 via-pink-500/5 to-transparent border border-pink-500/20 text-xs text-slate-700 dark:text-slate-300 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-pink-500 font-bold">
+                    <Users className="w-4 h-4" />
+                    <span>Langsung Terhubung & Sinkron</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Anda tidak perlu membuat spreadsheet atau mengatur kategori. FinLog akan otomatis menyambungkan Anda ke Google Sheet milik pasangan Anda.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* MODE: NEW */}
             {sheetMode === "new" && (
@@ -661,7 +819,23 @@ export default function OnboardingPage() {
 
       {/* Bottom Action Buttons */}
       <div className="pt-4 space-y-2">
-        {sheetMode === "existing" && step === 1 ? (
+        {sheetMode === "partner_code" && step === 1 ? (
+          <button
+            type="button"
+            onClick={handleConnectPartnerCode}
+            disabled={isProcessing || !partnerCode.trim()}
+            className="w-full py-3.5 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-400 hover:to-rose-400 text-white font-extrabold rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-pink-500/25 active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50"
+          >
+            {isProcessing ? (
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <>
+                <Heart className="w-4 h-4 fill-white" />
+                <span>Gabung ke Spreadsheet Pasangan 💕</span>
+              </>
+            )}
+          </button>
+        ) : sheetMode === "existing" && step === 1 ? (
           <button
             type="button"
             onClick={handleConnectExisting}

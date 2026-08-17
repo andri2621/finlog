@@ -20,7 +20,20 @@ export async function GET() {
     .eq("id", user.id)
     .single();
 
-  const refreshToken = profile?.google_refresh_token;
+  let refreshToken = profile?.google_refresh_token;
+
+  // Fallback: if user is linked to partner and doesn't have their own refresh token
+  if (!refreshToken && profile?.partner_id) {
+    const { data: partnerProfile } = await supabase
+      .from("profiles")
+      .select("google_refresh_token")
+      .eq("id", profile.partner_id)
+      .single();
+    if (partnerProfile?.google_refresh_token) {
+      refreshToken = partnerProfile.google_refresh_token;
+    }
+  }
+
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 

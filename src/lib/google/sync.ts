@@ -51,6 +51,11 @@ export class SyncEngine {
   private credentials: { accessToken?: string; spreadsheetId?: string } = {};
   private syncPromise: Promise<void> | null = null;
   private needsAnotherSync = false;
+  private onTokenRefreshRequested?: () => Promise<string | null>;
+
+  public setTokenRefreshHandler(handler: () => Promise<string | null>) {
+    this.onTokenRefreshRequested = handler;
+  }
 
   private constructor() {
     if (typeof window !== "undefined") {
@@ -146,7 +151,11 @@ export class SyncEngine {
     return this.syncPromise;
   }
 
-  private async performSync(accessToken?: string, spreadsheetId?: string) {
+  private async performSync(
+    accessToken?: string,
+    spreadsheetId?: string,
+    isRetryAfterRefresh = false
+  ): Promise<void> {
     const token = accessToken || this.credentials.accessToken;
     const sheetId = spreadsheetId || this.credentials.spreadsheetId;
 
@@ -166,71 +175,64 @@ export class SyncEngine {
         let queue = await db.sync_queue.toArray();
         while (queue.length > 0) {
           for (const item of queue) {
-            try {
-              let success = false;
+            let success = false;
 
-              // A. Transactions
-              if (item.entity === "transactions") {
-                if (item.action === "create") {
-                  success = await appendTransactionToSheet(token, sheetId, item.data as Transaction);
-                } else if (item.action === "update") {
-                  success = await updateTransactionInSheet(token, sheetId, item.data as Transaction);
-                } else if (item.action === "delete") {
-                  success = await deleteTransactionFromSheet(token, sheetId, item.data?.id || "");
-                }
+            // A. Transactions
+            if (item.entity === "transactions") {
+              if (item.action === "create") {
+                success = await appendTransactionToSheet(token, sheetId, item.data as Transaction);
+              } else if (item.action === "update") {
+                success = await updateTransactionInSheet(token, sheetId, item.data as Transaction);
+              } else if (item.action === "delete") {
+                success = await deleteTransactionFromSheet(token, sheetId, item.data?.id || "");
               }
+            }
 
-              // B. Budgets
-              else if (item.entity === "budgets") {
-                if (item.action === "create" || item.action === "update") {
-                  success = await saveBudgetToSheet(token, sheetId, item.data as Budget);
-                } else if (item.action === "delete") {
-                  success = await deleteBudgetFromSheet(token, sheetId, item.data?.id || "");
-                }
+            // B. Budgets
+            else if (item.entity === "budgets") {
+              if (item.action === "create" || item.action === "update") {
+                success = await saveBudgetToSheet(token, sheetId, item.data as Budget);
+              } else if (item.action === "delete") {
+                success = await deleteBudgetFromSheet(token, sheetId, item.data?.id || "");
               }
+            }
 
-              // C. Savings Goals
-              else if (item.entity === "savings") {
-                if (item.action === "create" || item.action === "update") {
-                  success = await saveSavingsToSheet(token, sheetId, item.data as SavingsGoal);
-                } else if (item.action === "delete") {
-                  success = await deleteSavingsFromSheet(token, sheetId, item.data?.id || "");
-                }
+            // C. Savings Goals
+            else if (item.entity === "savings") {
+              if (item.action === "create" || item.action === "update") {
+                success = await saveSavingsToSheet(token, sheetId, item.data as SavingsGoal);
+              } else if (item.action === "delete") {
+                success = await deleteSavingsFromSheet(token, sheetId, item.data?.id || "");
               }
+            }
 
-              // D. Savings Logs
-              else if (item.entity === "savings_logs") {
-                if (item.action === "create") {
-                  success = await appendSavingsLogToSheet(token, sheetId, item.data as SavingsLog);
-                }
+            // D. Savings Logs
+            else if (item.entity === "savings_logs") {
+              if (item.action === "create") {
+                success = await appendSavingsLogToSheet(token, sheetId, item.data as SavingsLog);
               }
+            }
 
-              // E. Recurring
-              else if (item.entity === "recurring") {
-                if (item.action === "create" || item.action === "update") {
-                  success = await saveRecurringToSheet(token, sheetId, item.data as RecurringExpense);
-                } else if (item.action === "delete") {
-                  success = await deleteRecurringFromSheet(token, sheetId, item.data?.id || "");
-                }
+            // E. Recurring
+            else if (item.entity === "recurring") {
+              if (item.action === "create" || item.action === "update") {
+                success = await saveRecurringToSheet(token, sheetId, item.data as RecurringExpense);
+              } else if (item.action === "delete") {
+                success = await deleteRecurringFromSheet(token, sheetId, item.data?.id || "");
               }
+            }
 
-              // F. Config / Categories
-              else if (item.entity === "config") {
-                if (item.action === "create" || item.action === "update") {
-                  success = await saveCategoryToSheet(token, sheetId, item.data as CategoryConfig);
-                } else if (item.action === "delete") {
-                  success = await deleteCategoryFromSheet(token, sheetId, item.data?.id || "");
-                }
+            // F. Config / Categories
+            else if (item.entity === "config") {
+              if (item.action === "create" || item.action === "update") {
+                success = await saveCategoryToSheet(token, sheetId, item.data as CategoryConfig);
+              } else if (item.action === "delete") {
+                success = await deleteCategoryFromSheet(token, sheetId, item.data?.id || "");
               }
+            }
 
-              if (success && item.id) {
-                await db.sync_queue.delete(item.id);
-              }
-            } catch (err: any) {
-              if (err?.status === 401 || err?.message?.includes("401")) {
-                this.status.error = "Token expired";
-                return;
-              }
+            if (success && item.id) {
+              await db.sync_queue.delete(item.id);
             }
           }
 
@@ -274,10 +276,29 @@ export class SyncEngine {
           await db.budgets.bulkPut(remoteBudgets);
         }
 
-        // 2C. Savings
+        // 2C. Savings (reconcile with delete protection)
         const remoteSavings = await fetchSavingsFromSheet(token, sheetId);
         if (remoteSavings.length > 0) {
-          await db.savings.bulkPut(remoteSavings);
+          const pendingSavingsDeletes = new Set(
+            (await db.sync_queue.where("entity").equals("savings").toArray())
+              .filter((item) => item.action === "delete")
+              .map((item) => item.data?.id)
+          );
+
+          const filteredRemote = remoteSavings.filter((s) => !pendingSavingsDeletes.has(s.id));
+          const remoteIdSet = new Set(filteredRemote.map((s) => s.id));
+
+          const localSavings = await db.savings.toArray();
+          const toDeleteLocal = localSavings.filter(
+            (s) => !remoteIdSet.has(s.id) && !pendingSavingsDeletes.has(s.id)
+          );
+          for (const del of toDeleteLocal) {
+            await db.savings.delete(del.id);
+          }
+
+          if (filteredRemote.length > 0) {
+            await db.savings.bulkPut(filteredRemote);
+          }
         }
 
         // 2D. Savings Logs
@@ -292,10 +313,27 @@ export class SyncEngine {
           await db.recurring.bulkPut(remoteRecurring);
         }
 
-        // 2F. Categories / Config
+        // 2F. Categories / Config (reconcile with delete protection)
         const remoteCategories = await fetchCategoriesFromSheet(token, sheetId);
         if (remoteCategories.length > 0) {
-          await db.categories.bulkPut(remoteCategories);
+          const pendingConfigDeletes = new Set(
+            (await db.sync_queue.where("entity").equals("config").toArray())
+              .filter((item) => item.action === "delete")
+              .map((item) => item.data?.id)
+          );
+
+          const filteredRemote = remoteCategories.filter((c) => !pendingConfigDeletes.has(c.id));
+          const remoteIdSet = new Set(filteredRemote.map((c) => c.id));
+          
+          const localCats = await db.categories.toArray();
+          const toDeleteLocal = localCats.filter((c) => !remoteIdSet.has(c.id) && !pendingConfigDeletes.has(c.id));
+          for (const del of toDeleteLocal) {
+            await db.categories.delete(del.id);
+          }
+
+          if (filteredRemote.length > 0) {
+            await db.categories.bulkPut(filteredRemote);
+          }
         }
 
       } while (this.needsAnotherSync);
@@ -303,6 +341,28 @@ export class SyncEngine {
       this.status.lastSyncedAt = new Date();
       await this.updatePendingCount();
     } catch (err: any) {
+      const is401 =
+        err?.status === 401 ||
+        err?.status === 403 ||
+        err?.name === "GoogleAuthError" ||
+        err?.message?.includes("401") ||
+        err?.message?.includes("Unauthorized");
+
+      if (is401 && this.onTokenRefreshRequested && !isRetryAfterRefresh) {
+        console.warn("Google Access Token expired (401). Silently refreshing token in background...");
+        try {
+          const freshToken = await this.onTokenRefreshRequested();
+          if (freshToken) {
+            this.credentials.accessToken = freshToken;
+            this.status.isSyncing = false;
+            // Immediate retry with fresh token!
+            return this.performSync(freshToken, sheetId, true);
+          }
+        } catch (refreshErr) {
+          console.error("Token refresh handler failed:", refreshErr);
+        }
+      }
+
       console.error("Sync error:", err);
       this.status.error = err?.message || "Sync failed";
     } finally {

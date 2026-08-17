@@ -4,6 +4,7 @@ import React from "react";
 import { ThemeProvider } from "@/lib/context/ThemeContext";
 import { AuthProvider } from "@/lib/context/AuthContext";
 import { FinanceProvider } from "@/lib/context/FinanceContext";
+import { PWAProvider } from "@/lib/context/PWAContext";
 import { AppShell } from "@/components/layout/AppShell";
 
 export function ClientProviders({ children }: { children: React.ReactNode }) {
@@ -11,7 +12,9 @@ export function ClientProviders({ children }: { children: React.ReactNode }) {
     <ThemeProvider>
       <AuthProvider>
         <FinanceProvider>
-          <AppShell>{children}</AppShell>
+          <PWAProvider>
+            <AppShell>{children}</AppShell>
+          </PWAProvider>
         </FinanceProvider>
       </AuthProvider>
     </ThemeProvider>

@@ -20,14 +20,14 @@ export function BudgetModal({ isOpen, onClose }: BudgetModalProps) {
   } = useFinance();
 
   const [totalBudgetInput, setTotalBudgetInput] = useState<string>(
-    overallBudget ? formatInputNumber(String(overallBudget.limitAmount)) : "5.000.000"
+    overallBudget && overallBudget.limitAmount > 0 ? formatInputNumber(String(overallBudget.limitAmount)) : ""
   );
 
   const [categoryBudgets, setCategoryBudgets] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
     expenseCategories.forEach((cat) => {
       const existing = currentMonthBudgets.find((b) => b.category === cat.name);
-      initial[cat.name] = existing ? formatInputNumber(String(existing.limitAmount)) : "0";
+      initial[cat.name] = existing && existing.limitAmount > 0 ? formatInputNumber(String(existing.limitAmount)) : "";
     });
     return initial;
   });

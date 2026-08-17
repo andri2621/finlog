@@ -16,10 +16,25 @@ import { getTodayString, formatInputNumber, parseInputNumber } from "@/lib/utils
 import { useFinance } from "@/lib/context/FinanceContext";
 import confetti from "canvas-confetti";
 
-export function ReceiptScannerModal() {
+interface ReceiptScannerModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onApplyToForm?: (data: {
+    description: string;
+    amountStr: string;
+    category: string;
+    paymentMethod: string;
+    date: string;
+  }) => void;
+}
+
+export function ReceiptScannerModal({
+  isOpen,
+  onClose,
+  onApplyToForm,
+}: ReceiptScannerModalProps) {
   const { addTransaction, expenseCategories, paymentMethods } = useFinance();
 
-  const [isOpen, setIsOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -38,11 +53,11 @@ export function ReceiptScannerModal() {
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const handleClose = () => {
-    setIsOpen(false);
     setPreviewImage(null);
     setErrorMessage(null);
     setFormData(null);
     setSaveSuccess(false);
+    onClose();
   };
 
   const processImageWithGemini = async (file: File) => {
@@ -179,30 +194,15 @@ export function ReceiptScannerModal() {
     }
   };
 
+  if (!isOpen) return null;
+
   return (
-    <>
-      {/* FLOATING ACTION BUTTON WITH CENTERED PULSE */}
-      <button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        aria-label="Pindai Struk Belanja"
-        className="fixed bottom-20 right-4 sm:right-[calc(50%-200px)] z-30 w-14 h-14 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 flex items-center justify-center shadow-xl shadow-emerald-500/30 hover:scale-105 active:scale-95 transition-all duration-200 group cursor-pointer touch-manipulation"
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+      <div
+        className="w-full max-w-md bg-white dark:bg-[#0D1326] border border-slate-200 dark:border-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 flex flex-col max-h-[92vh] overflow-y-auto animate-in slide-in-from-bottom-8 duration-300"
+        role="dialog"
+        aria-modal="true"
       >
-        {/* Centered Pulse Waves */}
-        {/* <span className="absolute inset-0 rounded-full bg-emerald-400 opacity-40 animate-ping pointer-events-none"></span>
-        <span className="absolute -inset-1 rounded-full bg-gradient-to-tr from-emerald-400 to-teal-300 opacity-30 blur-sm pointer-events-none"></span> */}
-
-        <Scan className="w-6 h-6 stroke-[2.2] group-hover:rotate-12 transition-transform duration-300 relative z-10" />
-      </button>
-
-      {/* MODAL */}
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-          <div
-            className="w-full max-w-md bg-white dark:bg-[#0D1326] border border-slate-200 dark:border-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 flex flex-col max-h-[92vh] overflow-y-auto animate-in slide-in-from-bottom-8 duration-300"
-            role="dialog"
-            aria-modal="true"
-          >
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center gap-2">
@@ -418,20 +418,34 @@ export function ReceiptScannerModal() {
                     <button
                       type="button"
                       onClick={() => { setFormData(null); setPreviewImage(null); setErrorMessage(null); }}
-                      className="py-3 px-4 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                      className="py-3 px-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                     >
                       Scan Ulang
                     </button>
+                    {onApplyToForm && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (formData) {
+                            onApplyToForm(formData);
+                            handleClose();
+                          }
+                        }}
+                        className="py-3 px-3.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-900 dark:text-white text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        Gunakan di Form
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={handleSave}
                       disabled={isSaving || parseInputNumber(formData.amountStr) <= 0}
-                      className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-slate-950 font-bold rounded-2xl text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/20 cursor-pointer touch-manipulation"
+                      className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-slate-950 font-bold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all shadow-lg shadow-emerald-500/20 cursor-pointer touch-manipulation"
                     >
                       {isSaving ? (
                         <span className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
                       ) : (
-                        <><Save className="w-4 h-4" /> Simpan Transaksi</>
+                        <><Save className="w-4 h-4" /> Simpan Langsung</>
                       )}
                     </button>
                   </div>
@@ -440,7 +454,5 @@ export function ReceiptScannerModal() {
             </div>
           </div>
         </div>
-      )}
-    </>
   );
 }

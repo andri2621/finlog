@@ -348,6 +348,16 @@ export default function InviteAcceptancePage() {
             )}
           </button>
         )}
+
+        {/* Manual Code Box for Installed PWA Users */}
+        <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 text-center space-y-2">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            Sudah install aplikasi di HP? Masukkan kode ini di aplikasi:
+          </p>
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-mono font-bold text-pink-500">
+            <span>KODE: {inviteCode}</span>
+          </div>
+        </div>
       </div>
     </div>
   );

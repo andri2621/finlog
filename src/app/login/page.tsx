@@ -12,8 +12,11 @@ import {
   Heart,
   ArrowRight,
   Sparkles,
+  Smartphone,
 } from "lucide-react";
 import { useAuth } from "@/lib/context/AuthContext";
+
+import Link from "next/link";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -46,6 +49,14 @@ export default function LoginPage() {
             Fin<span className="text-emerald-500">Log</span>
           </span>
         </div>
+
+        <Link
+          href="/how-to-install"
+          className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-full transition-colors"
+        >
+          <span>Cara Install</span>
+          <ArrowRight className="w-3 h-3" />
+        </Link>
       </div>
 
       {/* HERO SECTION */}
@@ -146,15 +157,15 @@ export default function LoginPage() {
           )}
         </button>
 
-        {/* <button
-          type="button"
-          onClick={handleDemo}
-          className="w-full py-3 px-4 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold rounded-2xl text-xs flex items-center justify-center gap-1 transition-colors cursor-pointer"
+        {/* HOW TO INSTALL CTA BUTTON */}
+        <Link
+          href="/how-to-install"
+          className="w-full py-3 px-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-emerald-500 text-slate-700 dark:text-slate-300 hover:text-emerald-500 font-semibold text-xs flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
         >
-          <span>Login / Setup Spreadsheet Manual</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button> */}
-        
+          <Smartphone className="w-4 h-4 text-emerald-500" />
+          <span>Cara Pasang di HP (iOS & Android)</span>
+          <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+        </Link>
 
         <div className="flex items-center justify-center gap-1.5 text-[10px] text-slate-500 pt-1">
           <ShieldCheck className="w-3.5 h-3.5" />

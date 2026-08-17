@@ -15,14 +15,18 @@ import {
   X,
 } from "lucide-react";
 import { useFinance } from "@/lib/context/FinanceContext";
+import { useAuth } from "@/lib/context/AuthContext";
 import { formatIDR, formatDateGroup, getMonthDisplayName, formatInputNumber, parseInputNumber } from "@/lib/utils";
 import { Transaction } from "@/lib/db/types";
+import { UserFilterDropdown } from "@/components/ui/UserFilterDropdown";
 
 export default function HistoryPage() {
+  const { user, partner } = useAuth();
   const {
     transactions,
     selectedMonth,
     setSelectedMonth,
+    selectedUserFilter,
     deleteTransaction,
     updateTransaction,
     expenseCategories,
@@ -38,12 +42,29 @@ export default function HistoryPage() {
   const [editAmount, setEditAmount] = useState("");
   const [editCategory, setEditCategory] = useState("");
   const [editPaymentMethod, setEditPaymentMethod] = useState("");
+  const [editDate, setEditDate] = useState("");
 
   // Filter transactions
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
       // Month filter
-      if (selectedMonth && !tx.date.startsWith(selectedMonth)) return false;
+      if (selectedMonth && tx.date && !tx.date.startsWith(selectedMonth)) return false;
+
+      // User filter (All, Me, Partner)
+      const rec = (tx.recordedBy || "").trim().toLowerCase();
+      const meName = (user?.name || "").trim().toLowerCase();
+      const meEmail = (user?.email || "").trim().toLowerCase();
+      const partnerName = (partner?.name || "").trim().toLowerCase();
+      const partnerEmail = (partner?.email || "").trim().toLowerCase();
+
+      const isMe = Boolean((meName && rec === meName) || (meEmail && rec === meEmail));
+      const isPartner = Boolean((partnerName && rec === partnerName) || (partnerEmail && rec === partnerEmail) || (!isMe && rec !== ""));
+
+      if (selectedUserFilter === "me") {
+        if (!isMe && meName) return false;
+      } else if (selectedUserFilter === "partner") {
+        if (!isPartner) return false;
+      }
 
       // Type filter
       if (activeFilter !== "all" && tx.type !== activeFilter) return false;
@@ -51,25 +72,26 @@ export default function HistoryPage() {
       // Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchDesc = tx.description.toLowerCase().includes(q);
-        const matchCat = tx.category.toLowerCase().includes(q);
-        const matchPay = tx.paymentMethod.toLowerCase().includes(q);
-        const matchBy = tx.recordedBy.toLowerCase().includes(q);
+        const matchDesc = (tx.description || "").toLowerCase().includes(q);
+        const matchCat = (tx.category || "").toLowerCase().includes(q);
+        const matchPay = (tx.paymentMethod || "").toLowerCase().includes(q);
+        const matchBy = (tx.recordedBy || "").toLowerCase().includes(q);
         if (!matchDesc && !matchCat && !matchPay && !matchBy) return false;
       }
 
       return true;
     });
-  }, [transactions, selectedMonth, activeFilter, searchQuery]);
+  }, [transactions, selectedMonth, selectedUserFilter, user?.name, user?.email, partner?.name, partner?.email, activeFilter, searchQuery]);
 
   // Group by Date
   const groupedTransactions = useMemo(() => {
     const groups: { [date: string]: Transaction[] } = {};
     filteredTransactions.forEach((tx) => {
-      if (!groups[tx.date]) {
-        groups[tx.date] = [];
+      const dateKey = tx.date || "Tanpa Tanggal";
+      if (!groups[dateKey]) {
+        groups[dateKey] = [];
       }
-      groups[tx.date].push(tx);
+      groups[dateKey].push(tx);
     });
     return groups;
   }, [filteredTransactions]);
@@ -78,10 +100,11 @@ export default function HistoryPage() {
 
   const handleStartEdit = (tx: Transaction) => {
     setSelectedTxForAction(tx);
-    setEditDesc(tx.description);
-    setEditAmount(formatInputNumber(String(tx.amount)));
-    setEditCategory(tx.category);
-    setEditPaymentMethod(tx.paymentMethod);
+    setEditDesc(tx.description || "");
+    setEditAmount(formatInputNumber(String(tx.amount || 0)));
+    setEditCategory(tx.category || "");
+    setEditPaymentMethod(tx.paymentMethod || "");
+    setEditDate(tx.date || "");
     setIsEditing(true);
   };
 
@@ -89,10 +112,11 @@ export default function HistoryPage() {
     if (!selectedTxForAction) return;
     const amt = parseInputNumber(editAmount) || selectedTxForAction.amount;
     await updateTransaction(selectedTxForAction.id, {
-      description: editDesc,
+      description: editDesc.trim(),
       amount: amt,
       category: editCategory,
       paymentMethod: editPaymentMethod,
+      date: editDate || selectedTxForAction.date,
     });
     setIsEditing(false);
     setSelectedTxForAction(null);
@@ -118,14 +142,17 @@ export default function HistoryPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-1.5 bg-white dark:bg-[#0F162A] border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-700 dark:text-slate-300 font-semibold shadow-sm">
-          <Calendar className="w-3.5 h-3.5 text-emerald-500" />
-          <input
-            type="month"
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="bg-transparent text-xs text-slate-900 dark:text-white focus:outline-none cursor-pointer"
-          />
+        <div className="flex items-center gap-2">
+          <UserFilterDropdown />
+          <div className="flex items-center gap-1.5 bg-white dark:bg-[#0F162A] border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-700 dark:text-slate-300 font-semibold shadow-sm">
+            <Calendar className="w-3.5 h-3.5 text-emerald-500" />
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="bg-transparent text-xs text-slate-900 dark:text-white focus:outline-none cursor-pointer"
+            />
+          </div>
         </div>
       </div>
 
@@ -194,31 +221,53 @@ export default function HistoryPage() {
             Belum ada catatan pada periode ini. Mulai mencatat pengeluaran atau pemasukan baru sekarang.
           </p>
           <Link
-            href="/add"
-            className="mt-4 py-2 px-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-md"
+            href={
+              activeFilter === "income"
+                ? "/add?type=income"
+                : activeFilter === "expense"
+                ? "/add?type=expense"
+                : "/add"
+            }
+            className="mt-4 py-2.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
           >
             <PlusCircle className="w-4 h-4" />
-            + Catat Pengeluaran
+            <span>
+              {activeFilter === "income"
+                ? "Catat Pemasukan"
+                : activeFilter === "expense"
+                ? "Catat Pengeluaran"
+                : "Catat Transaksi"}
+            </span>
           </Link>
         </div>
       ) : (
         <div className="space-y-4">
           {sortedDates.map((dateStr) => {
-            const dayTxs = groupedTransactions[dateStr];
+            const dayTxs = groupedTransactions[dateStr] || [];
             const dayTotalExpense = dayTxs
               .filter((tx) => tx.type === "expense")
-              .reduce((sum, tx) => sum + tx.amount, 0);
+              .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+            const dayTotalIncome = dayTxs
+              .filter((tx) => tx.type === "income")
+              .reduce((sum, tx) => sum + (tx.amount || 0), 0);
 
             return (
               <div key={dateStr} className="space-y-1.5">
                 {/* Date Group Header */}
                 <div className="flex items-center justify-between px-1 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   <span>{formatDateGroup(dateStr)}</span>
-                  {dayTotalExpense > 0 && (
-                    <span className="text-red-500 font-semibold">
-                      ↓ {formatIDR(dayTotalExpense)}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {dayTotalIncome > 0 && activeFilter !== "expense" && (
+                      <span className="text-emerald-500 font-semibold">
+                        +{formatIDR(dayTotalIncome)}
+                      </span>
+                    )}
+                    {dayTotalExpense > 0 && activeFilter !== "income" && (
+                      <span className="text-rose-500 font-semibold">
+                        -{formatIDR(dayTotalExpense)}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Items in this date */}
@@ -248,12 +297,12 @@ export default function HistoryPage() {
 
                           <div>
                             <p className="text-xs font-bold text-slate-900 dark:text-white">
-                              {tx.description}
+                              {tx.description || (isExpense ? "Pengeluaran" : "Pemasukan")}
                             </p>
                             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                              {tx.category} • {tx.paymentMethod} • Oleh{" "}
+                              {tx.category || "Umum"} • {tx.paymentMethod || "Cash"} • Oleh{" "}
                               <span className="text-slate-700 dark:text-slate-300 font-medium">
-                                {tx.recordedBy}
+                                {tx.recordedBy || user?.name || "Saya"}
                               </span>
                             </p>
                           </div>
@@ -266,7 +315,7 @@ export default function HistoryPage() {
                             }`}
                           >
                             {isExpense ? "-" : "+"}
-                            {formatIDR(tx.amount)}
+                            {formatIDR(tx.amount || 0)}
                           </p>
                         </div>
                       </div>
@@ -319,7 +368,7 @@ export default function HistoryPage() {
               <div className="flex justify-between py-1 gap-2">
                 <span className="text-slate-500 dark:text-slate-400">Dicatat Oleh:</span>
                 <span className="font-semibold text-emerald-500">
-                  {selectedTxForAction.recordedBy}
+                  {selectedTxForAction.recordedBy || user?.name || "Saya"}
                 </span>
               </div>
               <div className="flex justify-between py-1 gap-2">
@@ -331,13 +380,13 @@ export default function HistoryPage() {
             <div className="grid grid-cols-2 gap-2 pt-2">
               <button
                 onClick={() => handleStartEdit(selectedTxForAction)}
-                className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5"
+                className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Edit className="w-3.5 h-3.5" /> Edit
               </button>
               <button
                 onClick={() => handleDelete(selectedTxForAction.id)}
-                className="py-2.5 px-3 bg-red-50 hover:bg-red-100 dark:bg-red-500/15 dark:hover:bg-red-500/25 text-red-600 dark:text-red-400 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5"
+                className="py-2.5 px-3 bg-red-50 hover:bg-red-100 dark:bg-red-500/15 dark:hover:bg-red-500/25 text-red-600 dark:text-red-400 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" /> Hapus
               </button>
@@ -378,6 +427,19 @@ export default function HistoryPage() {
                 value={editAmount}
                 onChange={(e) => setEditAmount(formatInputNumber(e.target.value))}
                 className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 transition-colors"
+              />
+            </div>
+
+            {/* Tanggal */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                Tanggal
+              </label>
+              <input
+                type="date"
+                value={editDate}
+                onChange={(e) => setEditDate(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 transition-colors"
               />
             </div>
 

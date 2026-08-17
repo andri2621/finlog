@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Calendar,
   CheckCircle2,
@@ -9,6 +10,7 @@ import {
   ChevronRight,
   TrendingDown,
   TrendingUp,
+  Scan,
 } from "lucide-react";
 import { useFinance } from "@/lib/context/FinanceContext";
 import { useAuth } from "@/lib/context/AuthContext";
@@ -16,20 +18,41 @@ import { formatIDR, getTodayString, formatInputNumber, parseInputNumber } from "
 import confetti from "canvas-confetti";
 import { BudgetAlertBanner } from "@/components/budget/BudgetAlertBanner";
 import { BudgetModal } from "@/components/budget/BudgetModal";
+import { ReceiptScannerModal } from "@/components/scanner/ReceiptScannerModal";
 
 export default function AddTransactionPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-8 flex items-center justify-center min-h-[50vh]">
+          <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <AddTransactionForm />
+    </Suspense>
+  );
+}
+
+function AddTransactionForm() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const typeParam = searchParams.get("type");
   const {
     expenseCategories,
     incomeCategories,
     paymentMethods,
+    getPocketBalance,
     addTransaction,
     lastSavedTransaction,
     undoLastTransaction,
     clearLastSavedTransaction,
   } = useFinance();
 
-  const [transactionType, setTransactionType] = useState<"expense" | "income">("expense");
+  const [transactionType, setTransactionType] = useState<"expense" | "income">(() =>
+    typeParam === "income" ? "income" : "expense"
+  );
+
   const [amountStr, setAmountStr] = useState<string>("0");
   const [description, setDescription] = useState<string>("");
   const [selectedExpenseCategory, setSelectedExpenseCategory] = useState<string>(
@@ -44,7 +67,22 @@ export default function AddTransactionPage() {
   const [selectedDate, setSelectedDate] = useState<string>(getTodayString());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showBudgetModal, setShowBudgetModal] = useState(false);
+  const [showScannerModal, setShowScannerModal] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
+
+  const handleApplyScannedReceipt = (data: {
+    description: string;
+    amountStr: string;
+    category: string;
+    paymentMethod: string;
+    date: string;
+  }) => {
+    setDescription(data.description);
+    setAmountStr(data.amountStr);
+    setSelectedExpenseCategory(data.category);
+    setSelectedPaymentMethod(data.paymentMethod);
+    setSelectedDate(data.date);
+  };
 
   const numericAmount = parseInputNumber(amountStr);
 
@@ -197,14 +235,24 @@ export default function AddTransactionPage() {
         </div>
 
         {transactionType === "expense" && (
-          <button
-            type="button"
-            onClick={() => setShowBudgetModal(true)}
-            className="text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:text-emerald-500 flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800/60 px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700/60 transition-colors cursor-pointer"
-          >
-            <span>Atur Anggaran</span>
-            <ChevronRight className="w-3 h-3" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setShowScannerModal(true)}
+              className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/15 flex items-center gap-1 bg-emerald-500/10 px-2.5 py-1.5 rounded-full border border-emerald-500/30 transition-colors cursor-pointer"
+            >
+              <Scan className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Scan Struk</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowBudgetModal(true)}
+              className="text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:text-emerald-500 flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800/60 px-2.5 py-1.5 rounded-full border border-slate-200 dark:border-slate-700/60 transition-colors cursor-pointer"
+            >
+              <span>Anggaran</span>
+              <ChevronRight className="w-3 h-3" />
+            </button>
+          </div>
         )}
       </div>
 
@@ -298,11 +346,16 @@ export default function AddTransactionPage() {
           </div>
         </div>
 
-        {/* PAYMENT METHOD PILLS (WITH COLOR DOTS) */}
+        {/* PAYMENT METHOD PILLS (WITH COLOR DOTS & LIVE BALANCE) */}
         <div>
-          <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-            {transactionType === "expense" ? "Metode Pembayaran" : "Diterima Di (Metode / Akun)"}
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+              {transactionType === "expense" ? "Metode Pembayaran (Akun)" : "Diterima Di (Metode / Akun)"}
+            </label>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+              Saldo {selectedPaymentMethod}: <strong className="text-emerald-500 font-bold">{formatIDR(getPocketBalance(selectedPaymentMethod))}</strong>
+            </span>
+          </div>
           <div className="grid grid-cols-3 gap-2">
             {paymentMethods.map((method) => {
               const isSelected = selectedPaymentMethod === method.name;
@@ -326,6 +379,11 @@ export default function AddTransactionPage() {
               );
             })}
           </div>
+          {transactionType === "expense" && numericAmount > getPocketBalance(selectedPaymentMethod) && getPocketBalance(selectedPaymentMethod) > 0 && (
+            <p className="text-[11px] text-amber-500 dark:text-amber-400 flex items-center gap-1 mt-1.5">
+              <span>⚠️ Pengeluaran ini melebihi saldo {selectedPaymentMethod} saat ini ({formatIDR(getPocketBalance(selectedPaymentMethod))}).</span>
+            </p>
+          )}
         </div>
 
         {/* DATE PICKER */}
@@ -377,6 +435,13 @@ export default function AddTransactionPage() {
 
       {/* Budget Modal */}
       <BudgetModal isOpen={showBudgetModal} onClose={() => setShowBudgetModal(false)} />
+
+      {/* Receipt Scanner Modal */}
+      <ReceiptScannerModal
+        isOpen={showScannerModal}
+        onClose={() => setShowScannerModal(false)}
+        onApplyToForm={handleApplyScannedReceipt}
+      />
     </div>
   );
 }

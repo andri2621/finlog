@@ -193,7 +193,7 @@ create table public.partner_invites (
 3. **`Savings` (Tab Tabungan Target):**
    `[ID, Nama Target, Target Jumlah, Terkumpul, Tenggat Tanggal, Ikon, Warna]`
 4. **`Savings_Logs` (Tab Histori Tabungan):**
-   `[ID, Tanggal, Savings ID, Nama Target, Tempat Dana, Jumlah, Dicatat Oleh, Created At]`
+   `[ID, Tanggal, Savings ID, Nama Target, Tempat Uang, Jumlah, Dicatat Oleh, Created At]`
 5. **`Recurring` (Tab Tagihan Rutin):**
    `[ID, Nama Tagihan, Jumlah, Kategori, Metode Pembayaran, Frekuensi, Hari Eksekusi, Otomatis Catat, Terakhir Dicatat, Status Aktif]`
 6. **`Config` (Tab Konfigurasi):**
