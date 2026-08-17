@@ -363,7 +363,7 @@ export default function SettingsPage() {
           </div>
 
           {/* Sync Status & Action Bar */}
-          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between gap-2">
             <div className="flex items-center gap-2.5 min-w-0">
               <div
                 className={`w-2.5 h-2.5 rounded-full shrink-0 ${
@@ -400,7 +400,7 @@ export default function SettingsPage() {
               type="button"
               onClick={() => syncNow()}
               disabled={syncStatus.isSyncing || !syncStatus.isOnline}
-              className="py-1.5 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shrink-0"
+              className="w-full py-1.5 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shrink-0"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${syncStatus.isSyncing ? "animate-spin" : ""}`} />
               <span>{syncStatus.isSyncing ? "Menyinkronkan..." : "Sinkronkan Sekarang"}</span>
