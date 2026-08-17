@@ -86,16 +86,17 @@ export class SyncEngine {
 
       this.updatePendingCount();
 
-      // Auto-sync periodically every 30 seconds to catch partner / multi-device changes
+      // Auto-sync periodically every 60 seconds ONLY when tab is active/visible
       setInterval(() => {
         if (
+          document.visibilityState === "visible" &&
           this.status.isOnline &&
           this.credentials.accessToken &&
           this.credentials.spreadsheetId
         ) {
           this.syncNow().catch(() => {});
         }
-      }, 30 * 1000);
+      }, 60 * 1000);
     }
   }
 
