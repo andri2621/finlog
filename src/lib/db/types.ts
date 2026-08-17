@@ -79,6 +79,7 @@ export interface UserProfile {
   name: string;
   email: string;
   image?: string;
+  avatarUrl?: string;
   isPartner?: boolean;
   streakCount: number;
   lastActiveDate: string;

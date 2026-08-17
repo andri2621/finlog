@@ -1,100 +1,221 @@
-# FinLog: Panduan Arsitektur & Business Flow
+# FinLog: Panduan Arsitektur Sistem, Skema Data & Business Flow
 
-Dokumen ini merupakan panduan teknis komprehensif (Architecture & Business Flow) untuk aplikasi **FinLog**, yang dirancang sebagai aplikasi *pencatatan keuangan bersama berbasis Google Sheets* secara *Real-Time* dan *Offline-First*.
+Dokumen ini merupakan referensi teknis resmi dan komprehensif untuk aplikasi **FinLog** (Sistem Pencatatan Keuangan Pribadi & Pasangan Berbasis Google Sheets secara Real-Time dan Offline-First).
 
 ---
 
-## 1. Ringkasan Visi & Produk
+## 1. Ringkasan Visi & Arsitektur Hybrid
 
-**FinLog** adalah aplikasi keuangan pribadi/pasangan yang sepenuhnya **backend-less** (tidak menggunakan server database seperti PostgreSQL atau MongoDB). Sebagai gantinya, FinLog menggunakan **Google Sheets milik pengguna** sebagai database utama penyimpan data.
+FinLog mengadopsi arsitektur **Hybrid Privacy-Centric**:
+* **Google Sheets (Google Drive Pengguna):** Bertindak sebagai *Single Source of Truth* untuk seluruh data transaksi keuangan, anggaran, target tabungan, tagihan rutin, dan konfigurasi kategori. Data keuangan pengguna tidak pernah disimpan di server pihak ketiga.
+* **Supabase (PostgreSQL + Auth + RLS):** Bertindak sebagai *Identity & Collaboration Layer* untuk autentikasi Google OAuth, manajemen profil pengguna, relasi pasangan (*Partner Pairing*), dan pengelolaan kode undangan (*Partner Invites*).
+* **IndexedDB via Dexie.js (Client-Side Database):** Bertindak sebagai *Offline Cache & Local Store* yang memungkinkan pengoperasian instan tanpa latensi (*Optimistic UI*) dan pencatatan saat tanpa sinyal (*Offline-First*).
+* **Google Gemini AI (`gemini-1.5-flash`):** Pemindai struk belanja otomatis (*Receipt OCR*) yang mengekstrak total belanja, tanggal, kategori, dan deskripsi secara cerdas.
 
-**Keunggulan Utama:**
-- **Privasi 100%:** Data tidak tersimpan di server pihak ketiga, melainkan di Google Drive pengguna itu sendiri.
-- **Offline-First:** Dirancang sebagai PWA (Progressive Web App). Pengguna dapat mencatat pengeluaran di pedalaman tanpa sinyal, dan data akan disinkronisasi (*sync*) ke Google Sheets secara otomatis saat koneksi internet kembali pulih.
-- **Kolaborasi Real-Time:** Jika dua orang (contoh: suami-istri) membuka aplikasi dan terhubung ke Spreadsheet yang sama, sinkronisasi dua arah akan terjadi saat aplikasi memuat ulang (melalui sinkronisasi data IndexedDB & Sheets API).
-- **Gamifikasi & AI:** Peringatan batas anggaran, tabungan target (*Savings Goals*), catatan berulang, dan pemindai struk otomatis (menggunakan Gemini 1.5 Flash Vision API).
+```mermaid
+flowchart TD
+    User([Pengguna / Pasangan]) <--> UI[Next.js App / PWA UI]
+    UI <--> Dexie[(IndexedDB Lokal)]
+    UI <--> SyncEngine[SyncEngine Service]
+    SyncEngine <-->|Google Sheets API v4| Sheets[(Google Sheets di Google Drive)]
+    UI <-->|OAuth / Profiles / Invites| Supabase[(Supabase DB & Auth)]
+    UI <-->|Receipt Scan| Gemini[Google Gemini 1.5 Flash AI]
+```
 
 ---
 
 ## 2. Tech Stack
 
-- **Framework:** Next.js 15+ (App Router)
-- **Styling:** Tailwind CSS v4
-- **Komponen UI:** Lucide React (Ikon), kustom CSS Variables untuk Light/Dark Mode
-- **Database Lokal:** Dexie.js (pembungkus IndexedDB)
-- **API Eksternal:** 
-  - Google Identity Services (GIS) untuk OAuth2 Login.
-  - Google Sheets API v4 & Google Drive API v3 untuk sinkronisasi.
-  - Google Gemini API (`gemini-1.5-flash-latest`) untuk *Receipt Scanner*.
+* **Frontend Framework:** Next.js 16+ (App Router, Turbopack, React 19)
+* **Styling & Design System:** Tailwind CSS v4 + Vanilla CSS Variables (Tema Gelap, Terang, dan Sistem)
+* **Icons:** Lucide React
+* **Client Database:** Dexie.js v4 (IndexedDB Wrapper)
+* **Backend & Auth:** Supabase Auth (Google OAuth Provider) + PostgreSQL dengan Row Level Security (RLS)
+* **Google APIs:**
+  * Google Sheets API v4
+  * Google Drive API v3
+* **AI Engine:** Google Generative AI (`gemini-1.5-flash-latest`)
+* **Visual Effects:** Canvas Confetti
 
 ---
 
-## 3. Arsitektur Sinkronisasi (Offline-First)
+## 3. Alur Bisnis Utama (Business Flows)
 
-Arsitektur FinLog bergantung pada pola sinkronisasi dua arah antara **IndexedDB (Lokal)** dan **Google Sheets (Remote)**, yang dikendalikan oleh `syncEngine.ts`.
-
-### 3.1. Alur Tambah Transaksi (Offline & Online)
-1. Pengguna memasukkan transaksi baru.
-2. Data langsung disimpan secara instan ke IndexedDB lokal (`db.transactions.add()`). Layar UI langsung diperbarui (*Optimistic UI*).
-3. Transaksi tersebut dimasukkan ke dalam **Antrean Sinkronisasi** (`db.sync_queue`).
-4. `syncEngine` memeriksa status internet (`navigator.onLine`):
-   - **Jika Offline:** Transaksi dibiarkan di dalam antrean. Pengguna bisa menutup aplikasi.
-   - **Jika Online & Token Akses Ada:** `syncEngine` akan memproses antrean tersebut dengan menembak API Google Sheets (`appendTransactionToSheet`). Jika berhasil, transaksi dihapus dari antrean lokal.
-   - **Jika Online tapi Token Hilang/Kedaluwarsa:** Transaksi tetap di dalam antrean sampai pengguna mendapatkan token baru (misal dengan login ulang), mencegah data hilang (Bug ini telah diperbaiki di iterasi terakhir dengan menyimpan token di `localStorage`).
-
-### 3.2. Penanganan Token (Google Auth)
-Google Identity Services tidak memberikan *Refresh Token* melalui pola *Implicit Grant* (sisi klien). Token akses hanya berlaku selama 1 jam. 
-- Saat *login*, token akses disimpan ke `localStorage` (`finlog_google_token`) dengan masa berlaku 55 menit.
-- Jika pengguna me-*refresh* tab, aplikasi mengambil kembali token tersebut dari `localStorage` untuk melanjutkan sinkronisasi secara transparan.
+### 3.1. Alur Autentikasi & Login Google OAuth
+1. Pengguna membuka `/login` dan menekan **"Lanjut dengan Google"**.
+2. Aplikasi mengarahkan pengguna ke Google OAuth via Supabase dengan izin (*scope*):
+   * `https://www.googleapis.com/auth/spreadsheets`
+   * `https://www.googleapis.com/auth/drive.file`
+   * `email`, `profile`
+   * `access_type: offline`, `prompt: consent` (untuk mendapatkan Refresh Token).
+3. Setelah disetujui, Google mengalihkan ke `/auth/callback`.
+4. Route handler `/auth/callback/route.ts` menukarkan *auth code* dengan sesi Supabase, menyimpan *provider refresh token* di database, dan mengarahkan pengguna ke:
+   * `/` jika sudah menyelesaikan onboarding (`onboarding_completed: true` dan `spreadsheet_id` sudah ada).
+   * `/onboarding` jika pengguna baru atau belum memiliki spreadsheet terhubung.
 
 ---
 
-## 4. Alur Bisnis (Business Flow) & Keamanan
+### 3.2. Alur Onboarding (Pembuatan Spreadsheet & Seeding Kategori)
+Halaman `/onboarding` memiliki dua jalur:
 
-### 4.1. Alur Autentikasi (Auth Guard)
-- **Komponen Penjaga:** `AppShell.tsx` memonitor `isAuthenticated`.
-- Jika pengguna belum memilih/membuat Spreadsheet dan mengaitkan akun, URL yang dilindungi (seperti `/settings`, `/history`) akan **diblokir** dan pengguna dilempar kembali ke `/welcome`.
-- Halaman `/onboarding` dan `/welcome` juga tidak bisa diakses secara terbalik oleh pengguna yang sudah *login* penuh.
+#### Jalur A: Buat Sheet Baru (Wizard 4 Langkah)
+1. **Langkah 1 (Nama Sheet):** Pengguna menentukan nama file spreadsheet (default: *FinLog*).
+2. **Langkah 2 (Kategori Pengeluaran):** Pengguna memilih atau menambah kategori kustom dengan *Color Picker* (dilengkapi validasi anti-duplikat).
+3. **Langkah 3 (Metode Pembayaran):** Pengguna memilih atau menambah metode bayar/dompet (BCA, GoPay, Cash, dll) beserta warna ikon.
+4. **Langkah 4 (Sumber Pemasukan & Pengingat):** Pengguna mengatur sumber pemasukan dan menyetel waktu pengingat harian (menggunakan *Time Picker* dan *iOS Switch*).
+5. **Eksekusi Pembuatan (`handleFinishNew`):**
+   * Aplikasi membuat spreadsheet baru di Google Drive pengguna dengan 6 tab standar.
+   * Menuliskan header kolom di setiap tab.
+   * **Seeding Konfigurasi:** Langsung menuliskan seluruh daftar kategori pengeluaran, metode bayar, dan sumber pemasukan kustom ke dalam tab `Config` di Google Sheets.
+   * Menyimpan data kategori ke `db.categories` lokal dan mengaktifkan spreadsheet di profil pengguna.
+   * Mengarahkan pengguna langsung ke Dashboard `/`.
 
-### 4.2. Alur Onboarding (Pembuatan Spreadsheet)
-1. Pengguna login dengan Google.
-2. Dialihkan ke `/onboarding`.
-3. Pengguna menyesuaikan Kategori (Pengeluaran/Pemasukan), Metode Pembayaran, dll.
-4. Aplikasi menembak **Google Drive API** dan **Google Sheets API** untuk membuat file `.xlsx` secara otomatis dengan *header* dan format tabel baku.
-5. Jika API dinonaktifkan di Google Cloud Console pengguna, pembuatan gagal dan pengguna ditahan di halaman *onboarding* dengan pesan error yang jelas (Mencegah kerusakan *sync* di kemudian hari).
-
----
-
-## 5. Skema Database (IndexedDB & Google Sheets)
-
-### 5.1. Tabel IndexedDB Lokal (`db.ts`)
-- `user_profile`: Menyimpan data profil (Nama, Email, Spreadsheet ID, Notifikasi, Mode Terang/Gelap).
-- `transactions`: Semua histori arus kas (Tipe: `income`, `expense`).
-- `categories`: Master data kategori, saku/dompet, dan metode pembayaran.
-- `budgets`: Batas anggaran bulanan (`limitAmount`).
-- `savings`: Tujuan tabungan (*targetAmount*, *currentAmount*).
-- `savings_logs`: Histori setoran tabungan.
-- `recurring`: Catatan otomatis berulang (Tagihan bulanan, berlangganan).
-- `sync_queue`: Penyimpan aksi tertunda selama *offline*.
-
-### 5.2. Format Tab (Sheet) di Google Sheets
-Setiap tabel lokal di atas dipetakan langsung ke "Tab" terpisah di Google Sheets yang sama:
-1. `TRANSACTIONS`
-2. `BUDGETS`
-3. `SAVINGS`
-4. `SAVINGS_LOGS`
-5. `RECURRING`
-6. `CONFIG`
-
-*(Catatan: Jangan ubah judul baris pertama / header di dalam Google Sheets agar sinkronisasi tidak rusak).*
+#### Jalur B: Gunakan Spreadsheet yang Sudah Ada (Instant Connect)
+1. Pengguna memasukkan link atau ID Google Spreadsheet yang sudah ada.
+2. Aplikasi membersihkan mock data lokal, mengaitkan ID spreadsheet tersebut ke profil Supabase dan IndexedDB, lalu langsung menarik (*pull sync*) seluruh data transaksi, anggaran, tabungan, dan kategori dari spreadsheet tersebut tanpa perlu melalui wizard.
 
 ---
 
-## 6. Keterbatasan & Roadmap (*Enterprise Readiness*)
-
-Walaupun FinLog telah berjalan seperti *Enterprise Business*, terdapat hal yang patut diperhatikan di sisi klien (Client-Side Only):
-1. **Push Notification:** Saat ini aplikasi hanya mendukung pengingat lokal harian yang dihitung secara *heuristic* ketika aplikasi dibuka. Notifikasi *Push* murni dari *Background Service Worker* ketika aplikasi tertutup membutuhkan koneksi VAPID ke *backend server*, yang mana aplikasi ini tidak memilikinya (murni serverless).
-2. **Keamanan:** Kunci API bawaan (seperti `NEXT_PUBLIC_GEMINI_API_KEY`) terekspos di sisi klien. Pada rilis produksi sungguhan, pastikan kunci ini memiliki *HTTP Referrer Restrictions* di Google Cloud Console untuk menghindari penyalahgunaan (*quota theft*).
+### 3.3. Alur Kolaborasi Pasangan & Undangan (`/invite/[code]`)
+1. **Pembuatan Undangan:**
+   * Pengguna utama membuka halaman Pengaturan (`/settings`) atau modal Ajak Pasangan (`PartnerModal.tsx`).
+   * Sistem memastikan `invite_code` unik (format `FIN-XXXX`) tersimpan di tabel `profiles` dan aktif di tabel `partner_invites`.
+   * Link undangan yang dihasilkan: `https://domain.com/invite/FIN-XXXX`.
+2. **Penerimaan Undangan:**
+   * Pasangan membuka link `https://domain.com/invite/FIN-XXXX`.
+   * Halaman `/invite/[code]` memvalidasi kode undangan ke Supabase dan menampilkan nama serta avatar pengundang.
+   * **Jika pasangan belum login:** Menekan tombol "Gabung dengan Google", diarahkan ke OAuth dengan parameter `invite_code`, lalu otomatis ditautkan ke akun dan spreadsheet pengundang setelah login.
+   * **Jika pasangan sudah login:** Menekan tombol "Terima Undangan", Supabase langsung memperbarui `partner_id` kedua belah pihak dan mengaitkan ID spreadsheet yang sama.
+   * Menampilkan animasi selebrasi *confetti* dan mengarahkan pasangan ke dashboard bersama.
 
 ---
-*Dibuat & disempurnakan oleh Antigravity AI.*
+
+### 3.4. Alur Sinkronisasi Data (Offline-First Sync Engine)
+Pengelolaan sinkronisasi ditangani secara otomatis oleh `SyncEngine` (`src/lib/google/sync.ts`):
+
+1. **Pencatatan Optimis (Zero Latency):**
+   * Setiap penambahan/perubahan transaksi, anggaran, tabungan, tagihan rutin, atau kategori langsung disimpan ke IndexedDB lokal (`db.transactions`, dll).
+   * UI langsung ter-update seketika (*instant response*).
+2. **Antrean Sinkronisasi (`db.sync_queue`):**
+   * Setiap mutasi dicatat ke dalam antrean offline (`sync_queue`).
+3. **Proses Pengiriman (*Drain Queue*):**
+   * Jika online, `syncEngine.syncNow()` memproses antrean satu per satu ke Google Sheets API.
+   * Setelah sukses masuk ke baris sheet, item dihapus dari antrean.
+   * Jika koneksi terputus (*offline*), antrean tetap tersimpan aman di perangkat dan akan otomatis dikirim saat perangkat kembali online.
+4. **Pembaruan Data Dua Arah (*Pull Sync*):**
+   * Setiap interval 60 detik atau saat aplikasi dibuka, `SyncEngine` menarik data terbaru dari Google Sheets untuk menangkap catatan baru yang dibuat oleh pasangan.
+
+---
+
+### 3.5. Alur Pemutusan & Hubungkan Ulang Spreadsheet (Settings)
+* **Hubungkan Ulang:** Menjalankan ulang alur OAuth untuk memperbarui token akses Google jika token kedaluwarsa atau izin dicabut.
+* **Putuskan:** Menghapus asosiasi spreadsheet lokal dan di Supabase (`spreadsheet_id = null`). File spreadsheet fisik di Google Drive pengguna **tetap aman dan tidak terhapus**. Pengguna dialihkan ke `/onboarding` untuk memilih sheet baru atau sheet lain.
+* **Keluar dari Akun (Logout):** Memanggil `supabase.auth.signOut()`, membersihkan IndexedDB lokal, menghapus token di storage, dan mengarahkan browser ke `/login`.
+
+---
+
+## 4. Skema Database
+
+### 4.1. Skema Supabase (PostgreSQL)
+
+```sql
+-- Tabel Profil Pengguna
+create table public.profiles (
+  id uuid references auth.users on delete cascade primary key,
+  email text,
+  name text,
+  avatar_url text,
+  spreadsheet_id text,
+  spreadsheet_name text default 'FINLOG',
+  partner_id uuid references public.profiles(id) on delete set null,
+  invite_code text unique,
+  reminder_enabled boolean default true,
+  reminder_time text default '20:00',
+  onboarding_completed boolean default false,
+  google_refresh_token text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Tabel Undangan Pasangan
+create table public.partner_invites (
+  id uuid default gen_random_uuid() primary key,
+  inviter_id uuid references public.profiles(id) on delete cascade not null,
+  invite_code text unique not null,
+  spreadsheet_id text not null,
+  spreadsheet_name text default 'FINLOG',
+  status text default 'active',
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+```
+
+#### Kebijakan Keamanan (Row Level Security - RLS)
+* Non-recursive policy pada `profiles`:
+  ```sql
+  create policy "Allow authenticated users to read profiles"
+    on public.profiles for select
+    using (auth.uid() is not null);
+
+  create policy "Allow users to update their own profile"
+    on public.profiles for update
+    using (auth.uid() = id);
+  ```
+* Policy pada `partner_invites`:
+  ```sql
+  create policy "Allow authenticated users to read active invites"
+    on public.partner_invites for select
+    using (auth.uid() is not null);
+  ```
+
+---
+
+### 4.2. Skema Dexie.js (IndexedDB Lokal)
+
+| Tabel | Primary Key | Indeks Pencarian | Deskripsi |
+| :--- | :--- | :--- | :--- |
+| `user_profile` | `id` | `id, email` | Profil pengguna lokal & preferensi |
+| `transactions` | `id` | `id, date, type, category, paymentMethod` | Histori pemasukan & pengeluaran |
+| `categories` | `id` | `id, type, name, order` | Master kategori & metode bayar |
+| `budgets` | `id` | `id, month, category` | Target batas anggaran bulanan |
+| `savings` | `id` | `id, name` | Target tabungan impian |
+| `savings_logs`| `id` | `id, savingsId, date` | Riwayat setoran/tarikan tabungan |
+| `recurring` | `id` | `id, isActive, frequency` | Tagihan otomatis & pengeluaran rutin |
+| `sync_queue` | `++id` | `id, entity, action, timestamp` | Antrean mutasi offline |
+
+---
+
+### 4.3. Struktur Tab Google Sheets (6 Tab Standar)
+
+1. **`Transactions` (Tab Transaksi):**
+   `[ID, Tanggal, Tipe, Deskripsi, Kategori, Metode Pembayaran, Jumlah (IDR), Dicatat Oleh, Created At, Updated At]`
+2. **`Budgets` (Tab Anggaran):**
+   `[ID, Bulan, Kategori, Batas Anggaran (IDR)]`
+3. **`Savings` (Tab Tabungan Target):**
+   `[ID, Nama Target, Target Jumlah, Terkumpul, Tenggat Tanggal, Ikon, Warna]`
+4. **`Savings_Logs` (Tab Histori Tabungan):**
+   `[ID, Tanggal, Savings ID, Nama Target, Tempat Dana, Jumlah, Dicatat Oleh, Created At]`
+5. **`Recurring` (Tab Tagihan Rutin):**
+   `[ID, Nama Tagihan, Jumlah, Kategori, Metode Pembayaran, Frekuensi, Hari Eksekusi, Otomatis Catat, Terakhir Dicatat, Status Aktif]`
+6. **`Config` (Tab Konfigurasi):**
+   `[ID, Tipe, Nama, Warna, Ikon, Urutan]`
+
+---
+
+## 5. Checklist Verifikasi & Deployment Produksi (Vercel)
+
+Saat melakukan deployment ke Vercel:
+1. **Environment Variables yang Wajib Disetel:**
+   * `NEXT_PUBLIC_SUPABASE_URL`: URL Project Supabase Anda (`https://xxx.supabase.co`)
+   * `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase Publishable / Anon Key
+   * `NEXT_PUBLIC_GOOGLE_CLIENT_ID`: Google OAuth Client ID
+   * `GOOGLE_CLIENT_SECRET`: Google OAuth Client Secret
+   * `NEXT_PUBLIC_GEMINI_API_KEY`: Google Gemini API Key untuk pemindai struk
+2. **Google Cloud Console Settings:**
+   * **Authorized JavaScript Origins:** Tambahkan `https://domain-anda.vercel.app` dan `http://localhost:3000`.
+   * **Authorized Redirect URIs:** Tambahkan `https://<project-ref>.supabase.co/auth/v1/callback`.
+3. **Supabase Auth URL Configuration:**
+   * **Site URL:** `https://domain-anda.vercel.app`
+   * **Redirect URLs:** Tambahkan `https://domain-anda.vercel.app/**` dan `http://localhost:3000/**`.
+
+---
+*Dokumentasi ini dibuat dan dipelihara secara berkala sebagai acuan pengembangan berkelanjutan FinLog.*

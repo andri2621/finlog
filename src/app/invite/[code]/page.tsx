@@ -54,10 +54,22 @@ export default function InviteAcceptancePage() {
       }
 
       try {
+        // 1. Try RPC function with SECURITY DEFINER first
+        const { data: rpcData, error: rpcErr } = await supabase
+          .rpc("get_invite_details", { p_invite_code: inviteCode });
+
+        if (!rpcErr && rpcData && rpcData.invite_code) {
+          setInviteData(rpcData as InviteData);
+          setLoading(false);
+          return;
+        }
+
+        // 2. Fallback to standard Supabase select join
         const { data, error: fetchErr } = await supabase
           .from("partner_invites")
           .select(`
             id,
+            inviter_id,
             invite_code,
             spreadsheet_id,
             spreadsheet_name,
@@ -76,7 +88,32 @@ export default function InviteAcceptancePage() {
         if (fetchErr || !data) {
           setError("Undangan tidak ditemukan atau sudah tidak aktif.");
         } else {
-          setInviteData(data as any);
+          // If inviter joined query returned null due to strict RLS, try direct profile fetch
+          let inviterObj = (data as any).inviter;
+          if (!inviterObj && (data as any).inviter_id) {
+            const { data: profData } = await supabase
+              .from("profiles")
+              .select("id, name, email, avatar_url")
+              .eq("id", (data as any).inviter_id)
+              .maybeSingle();
+            if (profData) {
+              inviterObj = profData;
+            }
+          }
+
+          setInviteData({
+            id: data.id,
+            invite_code: data.invite_code,
+            spreadsheet_id: data.spreadsheet_id,
+            spreadsheet_name: data.spreadsheet_name,
+            status: data.status,
+            inviter: inviterObj || {
+              id: (data as any).inviter_id || "",
+              name: "Pasanganmu",
+              email: "",
+              avatar_url: "",
+            },
+          });
         }
       } catch (err: any) {
         console.error(err);
@@ -216,9 +253,18 @@ export default function InviteAcceptancePage() {
 
         {/* Inviter Avatar & Header */}
         <div className="text-center mb-6">
-          <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-gradient-to-tr from-pink-500 to-rose-400 text-white flex items-center justify-center text-xl font-black shadow-lg shadow-pink-500/25 ring-4 ring-white dark:ring-[#0D1628]">
-            {inviterName.charAt(0)}
-          </div>
+          {inviteData.inviter?.avatar_url ? (
+            <img
+              src={inviteData.inviter.avatar_url}
+              alt={inviterName}
+              className="w-16 h-16 mx-auto mb-3 rounded-full object-cover shadow-lg shadow-pink-500/25 ring-4 ring-white dark:ring-[#0D1628]"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-gradient-to-tr from-pink-500 to-rose-400 text-white flex items-center justify-center text-xl font-black shadow-lg shadow-pink-500/25 ring-4 ring-white dark:ring-[#0D1628]">
+              {inviterName.charAt(0)}
+            </div>
+          )}
           <h2 className="text-base font-extrabold text-slate-900 dark:text-white">
             {inviterName}
           </h2>

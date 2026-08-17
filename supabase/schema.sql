@@ -37,12 +37,14 @@ alter table public.partner_invites enable row level security;
 -- 4. RLS Policies for Profiles
 drop policy if exists "Allow users to read their own profile and partner profile" on public.profiles;
 drop policy if exists "Allow authenticated users to read profiles" on public.profiles;
+drop policy if exists "Allow anyone to read profiles" on public.profiles;
 drop policy if exists "Allow users to update their own profile" on public.profiles;
 drop policy if exists "Allow users to insert their own profile" on public.profiles;
 
-create policy "Allow authenticated users to read profiles"
+-- Allow public read of profile metadata (name, avatar_url, etc)
+create policy "Allow anyone to read profiles"
   on public.profiles for select
-  using (auth.uid() is not null);
+  using (true);
 
 create policy "Allow users to update their own profile"
   on public.profiles for update
@@ -53,6 +55,7 @@ create policy "Allow users to insert their own profile"
   with check (auth.uid() = id);
 
 -- 5. RLS Policies for Partner Invites
+drop policy if exists "Allow anyone to read invite by invite_code" on public.partner_invites;
 create policy "Allow anyone to read invite by invite_code"
   on public.partner_invites for select
   using (true);
@@ -64,6 +67,36 @@ create policy "Allow authenticated users to create invites"
 create policy "Allow inviter to update their invites"
   on public.partner_invites for update
   using (auth.uid() = inviter_id);
+
+-- Helper RPC function to get invite details with inviter info (Bypasses RLS safely)
+create or replace function public.get_invite_details(p_invite_code text)
+returns json as $$
+declare
+  result json;
+begin
+  select json_build_object(
+    'id', pi.id,
+    'invite_code', pi.invite_code,
+    'spreadsheet_id', pi.spreadsheet_id,
+    'spreadsheet_name', pi.spreadsheet_name,
+    'status', pi.status,
+    'inviter', json_build_object(
+      'id', p.id,
+      'name', coalesce(p.name, 'Pasanganmu'),
+      'email', p.email,
+      'avatar_url', p.avatar_url
+    )
+  ) into result
+  from public.partner_invites pi
+  left join public.profiles p on p.id = pi.inviter_id
+  where pi.invite_code = p_invite_code
+    and pi.status = 'active';
+
+  return result;
+end;
+$$ language plpgsql security definer;
+
+grant execute on function public.get_invite_details(text) to anon, authenticated;
 
 -- 6. Trigger: Automatically Create Profile on User Signup
 create or replace function public.handle_new_user()

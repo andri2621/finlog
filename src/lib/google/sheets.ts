@@ -26,7 +26,8 @@ export const SHEETS_TABS = {
  */
 export async function createFinLogSpreadsheet(
   accessToken: string,
-  title: string = "FINLOG"
+  title: string = "FINLOG",
+  initialCategories?: CategoryConfig[]
 ): Promise<{ spreadsheetId: string; spreadsheetUrl: string }> {
   const response = await fetch("https://sheets.googleapis.com/v4/spreadsheets", {
     method: "POST",
@@ -92,7 +93,47 @@ export async function createFinLogSpreadsheet(
   // Write headers to all sheets
   await initializeSheetHeaders(accessToken, spreadsheetId);
 
+  // Write initial categories to Config tab if provided
+  if (initialCategories && initialCategories.length > 0) {
+    await populateInitialCategories(accessToken, spreadsheetId, initialCategories);
+  }
+
   return { spreadsheetId, spreadsheetUrl };
+}
+
+/**
+ * Populate initial categories and payment methods to the Config tab
+ */
+export async function populateInitialCategories(
+  accessToken: string,
+  spreadsheetId: string,
+  categories: CategoryConfig[]
+) {
+  if (!categories || categories.length === 0) return;
+  const rows = categories.map((cat) => [
+    cat.id,
+    cat.type,
+    cat.name,
+    cat.color,
+    cat.icon || "Tag",
+    cat.order,
+  ]);
+
+  try {
+    await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.CONFIG}!A2:F${rows.length + 1}?valueInputOption=USER_ENTERED`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ values: rows }),
+      }
+    );
+  } catch (err) {
+    console.warn("Failed to populate initial categories into Google Sheet:", err);
+  }
 }
 
 /**

@@ -184,26 +184,7 @@ export default function OnboardingPage() {
       let finalId = "finlog_sheet_" + Date.now();
       const finalName = sheetName || "FinLog";
 
-      if (accessToken) {
-        try {
-          const created = await createFinLogSpreadsheet(accessToken, finalName);
-          finalId = created.spreadsheetId;
-        } catch (err: any) {
-          console.error("Error creating Google Sheet via API:", err);
-          setErrorMessage(
-            "Gagal membuat Spreadsheet: Pastikan Google Sheets API dan Google Drive API sudah aktif di Google Cloud Console milikmu."
-          );
-          setIsProcessing(false);
-          return;
-        }
-      }
-
-      await db.transactions.clear();
-      await db.savings.clear();
-      await db.budgets.clear();
-
-      // Seed categories & payment methods in db.categories
-      await db.categories.clear();
+      // Prepare categories & payment methods to seed
       const categoriesToAdd = [
         ...expList.map((c, idx) => ({
           id: "cat_exp_" + (idx + 1),
@@ -227,6 +208,27 @@ export default function OnboardingPage() {
           order: idx + 1,
         })),
       ];
+
+      if (accessToken) {
+        try {
+          const created = await createFinLogSpreadsheet(accessToken, finalName, categoriesToAdd);
+          finalId = created.spreadsheetId;
+        } catch (err: any) {
+          console.error("Error creating Google Sheet via API:", err);
+          setErrorMessage(
+            "Gagal membuat Spreadsheet: Pastikan Google Sheets API dan Google Drive API sudah aktif di Google Cloud Console milikmu."
+          );
+          setIsProcessing(false);
+          return;
+        }
+      }
+
+      await db.transactions.clear();
+      await db.savings.clear();
+      await db.budgets.clear();
+
+      // Seed categories & payment methods in db.categories
+      await db.categories.clear();
       await db.categories.bulkAdd(categoriesToAdd);
 
       await setSpreadsheet(finalId, finalName);

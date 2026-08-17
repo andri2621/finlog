@@ -39,15 +39,8 @@ export default function SavingsPage() {
 
   return (
     <div className="p-4 space-y-4">
-      {/* TOP HEADER WITH BACK ARROW TO SETTINGS */}
+      {/* TOP HEADER */}
       <div className="flex items-center justify-between pb-1">
-        <Link
-          href="/settings"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-emerald-500 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Kembali ke Pengaturan</span>
-        </Link>
         <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">
           Tabungan
         </span>
