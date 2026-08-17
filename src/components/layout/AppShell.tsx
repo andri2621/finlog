@@ -207,6 +207,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 px-2.5 py-0.5 rounded-full animate-pulse">
                 <WifiOff className="w-3 h-3" /> Offline
               </span>
+            ) : syncStatus.isSyncing ? (
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full shadow-sm animate-pulse">
+                <RefreshCw className="w-3 h-3 animate-spin text-emerald-500" />
+                <span>Sinkronisasi...</span>
+              </span>
             ) : syncStatus.pendingCount > 0 ? (
               <button
                 type="button"
@@ -214,13 +219,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 className="inline-flex items-center gap-1.5 text-[11px] font-bold bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 px-2.5 py-0.5 rounded-full hover:bg-blue-500/25 active:scale-95 transition-all cursor-pointer touch-manipulation shadow-sm"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping shrink-0" />
-                <RefreshCw className={`w-3 h-3 ${syncStatus.isSyncing ? "animate-spin" : ""}`} />
+                <RefreshCw className="w-3 h-3" />
                 <span>{syncStatus.pendingCount} pending</span>
               </button>
             ) : (
-              <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-2.5 py-0.5 rounded-full">
+              <button
+                type="button"
+                onClick={() => syncNow()}
+                className="inline-flex items-center gap-1 text-[11px] font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-2.5 py-0.5 rounded-full transition-colors cursor-pointer"
+                title="Klik untuk sinkronkan manual"
+              >
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Sheets
-              </span>
+              </button>
             )}
           </div>
 

@@ -363,12 +363,14 @@ export default function SettingsPage() {
           </div>
 
           {/* Sync Status & Action Bar */}
-          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col items-center justify-between gap-2">
+          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2.5 min-w-0">
               <div
-                className={`w-2 h-2 rounded-full shrink-0 ${
+                className={`w-2.5 h-2.5 rounded-full shrink-0 ${
                   !syncStatus.isOnline
                     ? "bg-amber-500"
+                    : syncStatus.isSyncing
+                    ? "bg-emerald-500 animate-ping"
                     : syncStatus.pendingCount > 0
                     ? "bg-blue-500 animate-ping"
                     : "bg-emerald-500"
@@ -378,15 +380,17 @@ export default function SettingsPage() {
                 <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
                   {!syncStatus.isOnline
                     ? "Perangkat Offline"
+                    : syncStatus.isSyncing
+                    ? "Sedang menyinkronkan data..."
                     : syncStatus.pendingCount > 0
                     ? `${syncStatus.pendingCount} data pending sinkronisasi`
                     : "Semua data tersinkronisasi"}
                 </p>
                 <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
                   {syncStatus.isSyncing
-                    ? "Sedang mengirim data ke Google Sheets..."
+                    ? "Mengambil & mengirim data ke Spreadsheet..."
                     : syncStatus.lastSyncedAt
-                    ? `Terakhir sinkron: ${new Date(syncStatus.lastSyncedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`
+                    ? `Terakhir sinkron: ${new Date(syncStatus.lastSyncedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
                     : "Tersambung ke Google Sheets"}
                 </p>
               </div>
