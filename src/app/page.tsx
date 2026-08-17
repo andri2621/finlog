@@ -28,7 +28,6 @@ import { useAuth } from "@/lib/context/AuthContext";
 import { formatIDR } from "@/lib/utils";
 import { BudgetModal } from "@/components/budget/BudgetModal";
 import { BudgetAlertBanner } from "@/components/budget/BudgetAlertBanner";
-import { LandingView } from "@/components/auth/LandingView";
 
 export default function RootPage() {
   const { user, spreadsheetId } = useAuth();
@@ -50,9 +49,14 @@ export default function RootPage() {
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [activeDayData, setActiveDayData] = useState<{ day: string; amount: number } | null>(null);
 
-  // If user is not logged in or has not connected spreadsheet, render Landing Page directly at "/"
+  // AppShell will redirect to /onboarding or /login if these are missing,
+  // so just render a loader while the redirect is happening.
   if (!user || !spreadsheetId) {
-    return <LandingView />;
+    return (
+      <div className="flex-1 flex items-center justify-center min-h-[50vh]">
+        <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
   }
 
   // Calculate days in month & average

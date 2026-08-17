@@ -58,6 +58,7 @@ export default function SettingsPage() {
 
   // Disconnect Confirmation State matching Screenshot 2
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const host = typeof window !== "undefined" ? window.location.origin : "https://finlog.app";
   const inviteLink = `${host}/onboarding?sheetId=${spreadsheetId || "demo-finlog-sheet"}`;
@@ -406,16 +407,48 @@ export default function SettingsPage() {
 
           <button
             type="button"
-            onClick={() => {
-              logout();
-              router.push("/welcome");
-            }}
+            onClick={() => setShowLogoutConfirm(true)}
             className="py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 hover:text-red-500 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Keluar</span>
           </button>
         </div>
+
+        {/* LOGOUT CONFIRMATION ALERT */}
+        {showLogoutConfirm && (
+          <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 space-y-3 animate-in fade-in duration-200 mt-2">
+            <div className="space-y-1">
+              <p className="text-xs font-bold text-amber-700 dark:text-amber-400">
+                Peringatan!
+              </p>
+              <p className="text-[11px] text-amber-600/90 dark:text-amber-400/80">
+                Logout akan menghapus semua database dari memori perangkat ini demi keamanan. 
+                Jika ada catatan yang berstatus <strong>Pending</strong>, data tersebut akan hilang.
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  logout();
+                  router.push("/login");
+                }}
+                className="py-2 px-4 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Tetap Keluar
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                className="py-2 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modals */}

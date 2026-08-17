@@ -10,7 +10,7 @@ interface PartnerModalProps {
 }
 
 export function PartnerModal({ isOpen, onClose }: PartnerModalProps) {
-  const { user, partner, activeProfile, switchUser, spreadsheetId } = useAuth();
+  const { user, partner, spreadsheetId } = useAuth();
   const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;
@@ -49,7 +49,7 @@ export function PartnerModal({ isOpen, onClose }: PartnerModalProps) {
               <Heart className="w-5 h-5 fill-pink-500/30" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">Ajak Pasangan (Fifin ❤️)</h3>
+              <h3 className="text-base font-bold text-white">Ajak Pasangan</h3>
               <p className="text-xs text-slate-400">Catat keuangan bersama di 1 Google Sheet</p>
             </div>
           </div>
@@ -71,7 +71,7 @@ export function PartnerModal({ isOpen, onClose }: PartnerModalProps) {
               </span>
             </div>
             <p className="text-xs text-slate-300 leading-relaxed">
-              Kirimkan link undangan ini ke Fifin / pasanganmu. Saat pasanganmu mencatat di FinLog, data langsung tersimpan ke Google Sheet yang sama secara real-time tanpa database luar!
+              Kirimkan link undangan ini ke pasanganmu. Saat pasanganmu mencatat di FinLog, data langsung tersimpan ke Google Sheet yang sama secara real-time tanpa database luar!
             </p>
           </div>
 
@@ -106,42 +106,7 @@ export function PartnerModal({ isOpen, onClose }: PartnerModalProps) {
             Bagikan via WhatsApp ke Pasangan
           </button>
 
-          {/* Quick Demo Switcher */}
-          <div className="pt-3 border-t border-slate-800">
-            <p className="text-xs font-semibold text-slate-400 mb-2">
-              Uji Coba Ganti Akun Pasangan:
-            </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  switchUser("primary");
-                  onClose();
-                }}
-                className={`flex-1 py-2 px-3 rounded-xl text-xs font-medium transition-all ${
-                  activeProfile === "primary"
-                    ? "bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/20"
-                    : "bg-slate-800/80 text-slate-300 hover:bg-slate-800"
-                }`}
-              >
-                👤 Andri Setiawan
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  switchUser("partner");
-                  onClose();
-                }}
-                className={`flex-1 py-2 px-3 rounded-xl text-xs font-medium transition-all ${
-                  activeProfile === "partner"
-                    ? "bg-pink-500 text-slate-950 font-bold shadow-md shadow-pink-500/20"
-                    : "bg-slate-800/80 text-slate-300 hover:bg-slate-800"
-                }`}
-              >
-                ❤️ Fifin (Pasangan)
-              </button>
-            </div>
-          </div>
+
 
           {/* Privacy Note */}
           <div className="flex items-center gap-2 text-[11px] text-slate-500 justify-center">

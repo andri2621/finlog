@@ -1,4 +1,4 @@
-﻿/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
@@ -10,7 +10,6 @@ import { getTodayString } from "../utils";
 interface AuthContextType {
   user: UserProfile | null;
   partner: UserProfile | null;
-  activeProfile: "primary" | "partner";
   isAuthenticated: boolean;
   isLoaded: boolean;
   onboardingComplete: boolean;
@@ -19,7 +18,6 @@ interface AuthContextType {
   spreadsheetName: string;
   loginWithGoogle: () => Promise<void>;
   logout: () => void;
-  switchUser: (type: "primary" | "partner") => void;
   setSpreadsheet: (id: string, name: string) => Promise<void>;
   updateProfile: (data: Partial<UserProfile>) => Promise<void>;
 }
@@ -48,6 +46,7 @@ function isValidSpreadsheetId(id: string | null | undefined): boolean {
 }
 
 const TOKEN_STORAGE_KEY = "finlog_google_token";
+const KNOWN_ACCOUNTS_KEY = "finlog_known_accounts";
 const TOKEN_LIFETIME_MS = 55 * 60 * 1000; // 55 minutes
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -55,7 +54,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [partner, setPartner] = useState<UserProfile | null>(null);
-  const [activeProfile, setActiveProfile] = useState<"primary" | "partner">("primary");
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [spreadsheetId, setSpreadsheetId] = useState<string | null>(null);
   const [spreadsheetName, setSpreadsheetName] = useState<string>("FINLOG");
@@ -131,13 +129,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 });
                 const googleProfile = await res.json();
 
-                // Merge with existing profile (preserve spreadsheetId if already set)
-                const existingUser = await db.user_profile.get("user_primary");
+                // Smart Logout Feature: Restore spreadsheet ID if this email was previously connected
+                let restoredSheetId = existingUser?.spreadsheetId || "";
+                let restoredSheetName = existingUser?.spreadsheetName || "FINLOG";
+
+                if (!restoredSheetId && googleProfile.email) {
+                  try {
+                    const knownAccounts = JSON.parse(localStorage.getItem(KNOWN_ACCOUNTS_KEY) || "{}");
+                    if (knownAccounts[googleProfile.email]) {
+                      restoredSheetId = knownAccounts[googleProfile.email].id;
+                      restoredSheetName = knownAccounts[googleProfile.email].name || "FINLOG";
+                    }
+                  } catch (e) {
+                    // Ignore parse error
+                  }
+                }
+
                 const updatedUser: UserProfile = {
                   ...DEFAULT_PRIMARY,
                   ...(existingUser || {}),
                   name: googleProfile.name || existingUser?.name || "",
                   email: googleProfile.email || existingUser?.email || "",
+                  spreadsheetId: restoredSheetId,
+                  spreadsheetName: restoredSheetName,
                 };
                 await db.user_profile.put(updatedUser);
                 setUser(updatedUser);
@@ -199,9 +213,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSpreadsheetName("FINLOG");
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     try {
-      await db.user_profile.delete("user_primary");
+      // WIPE entire offline database on logout to protect privacy.
+      // Thanks to KNOWN_ACCOUNTS_KEY, if they login with the same email, they will bypass onboarding.
+      await Promise.all(db.tables.map(table => table.clear()));
     } catch (e) {
-      console.error("Logout DB error:", e);
+      console.error("Logout DB clear error:", e);
     }
   }, []);
 
@@ -214,13 +230,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const updated = { ...currentUser, spreadsheetId: id, spreadsheetName: name };
       await db.user_profile.put(updated);
       setUser(updated);
+      
+      // Save to known accounts map
+      if (updated.email) {
+        try {
+          const known = JSON.parse(localStorage.getItem(KNOWN_ACCOUNTS_KEY) || "{}");
+          known[updated.email] = { id, name };
+          localStorage.setItem(KNOWN_ACCOUNTS_KEY, JSON.stringify(known));
+        } catch (e) {}
+      }
     }
   }, []);
 
-  // â”€â”€â”€ SWITCH USER (primary / partner) â”€â”€â”€
-  const switchUser = useCallback((type: "primary" | "partner") => {
-    setActiveProfile(type);
-  }, []);
 
   // â”€â”€â”€ UPDATE PROFILE â”€â”€â”€
   const updateProfile = useCallback(async (data: Partial<UserProfile>) => {
@@ -231,14 +252,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(updated);
   }, []);
 
-  const activeUser = activeProfile === "primary" ? user : partner;
-
   return (
     <AuthContext.Provider
       value={{
-        user: activeUser,
+        user,
         partner,
-        activeProfile,
         isAuthenticated: Boolean(user),
         isLoaded,
         onboardingComplete: isValidSpreadsheetId(spreadsheetId),
@@ -247,7 +265,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         spreadsheetName,
         loginWithGoogle,
         logout,
-        switchUser,
         setSpreadsheet,
         updateProfile,
       }}

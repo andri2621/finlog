@@ -27,7 +27,7 @@ import { useRouter } from "next/navigation";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, partner, activeProfile, switchUser, spreadsheetId, isLoaded, accessToken, loginWithGoogle, onboardingComplete } = useAuth();
+  const { user, partner, spreadsheetId, isLoaded, accessToken, loginWithGoogle, onboardingComplete } = useAuth();
   const { syncStatus, syncNow } = useFinance();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showPartnerModal, setShowPartnerModal] = useState(false);
@@ -46,6 +46,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     } else if (isAuthenticated && pathname === "/login") {
       // Logged in but on login → always go home
       router.replace("/");
+    } else if (isAuthenticated && !onboardingComplete && !isPublicPage) {
+      // Logged in but no spreadsheet connected, and trying to access app pages → force to onboarding
+      router.replace("/onboarding");
     } else if (isAuthenticated && onboardingComplete && pathname === "/onboarding") {
       // Onboarding done, still on onboarding page → go home
       router.replace("/");
@@ -169,12 +172,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Streak Counter Badge */}
-            <div className="flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 px-2.5 py-1 rounded-full text-xs font-semibold shadow-inner select-none">
-              <Flame className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
-              <span>{user?.streakCount || 1}</span>
-            </div>
-
             {/* User Profile / Partner Switcher */}
             <div className="relative" ref={profileMenuRef}>
               <button
@@ -196,49 +193,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{user?.email}</p>
                   </div>
 
-                  <div className="py-1">
-                    <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      Akun FinLog
+                  <div className="py-2">
+                    <div className="px-3 py-1 flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
+                      <User className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>{user?.name || "Akun Saya"}</span>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        switchUser("primary");
-                        setShowUserMenu(false);
-                      }}
-                      className={`w-full flex items-center justify-between px-3 py-2 text-xs rounded-xl transition-colors cursor-pointer touch-manipulation ${
-                        activeProfile === "primary"
-                          ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold"
-                          : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <User className="w-3.5 h-3.5" />
-                        <span>{user?.name || "Akun Saya"}</span>
-                      </div>
-                      {activeProfile === "primary" && <Check className="w-3.5 h-3.5" />}
-                    </button>
-
                     {partner && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          switchUser("partner");
-                          setShowUserMenu(false);
-                        }}
-                        className={`w-full flex items-center justify-between px-3 py-2 text-xs rounded-xl transition-colors cursor-pointer touch-manipulation ${
-                          activeProfile === "partner"
-                            ? "bg-pink-50 dark:bg-pink-500/10 text-pink-600 dark:text-pink-400 font-bold"
-                            : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Users className="w-3.5 h-3.5 text-pink-500" />
-                          <span>{partner.name}</span>
-                        </div>
-                        {activeProfile === "partner" && <Check className="w-3.5 h-3.5 text-pink-500" />}
-                      </button>
+                      <div className="px-3 py-1 flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 mt-1">
+                        <Users className="w-3.5 h-3.5 text-pink-500" />
+                        <span>Bersama: {partner.name}</span>
+                      </div>
                     )}
                   </div>
 
