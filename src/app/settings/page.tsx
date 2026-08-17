@@ -400,7 +400,7 @@ export default function SettingsPage() {
               type="button"
               onClick={() => syncNow()}
               disabled={syncStatus.isSyncing || !syncStatus.isOnline}
-              className="w-full py-1.5 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shrink-0"
+              className="w-full py-1.5 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold flex justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shrink-0"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${syncStatus.isSyncing ? "animate-spin" : ""}`} />
               <span>{syncStatus.isSyncing ? "Menyinkronkan..." : "Sinkronkan Sekarang"}</span>
