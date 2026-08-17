@@ -46,7 +46,6 @@ export function LandingView() {
           <span className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">
             Fin<span className="text-emerald-500">Log</span>
           </span>
-          <Heart className="w-4 h-4 text-pink-500 fill-pink-500" />
         </div>
       </div>
 

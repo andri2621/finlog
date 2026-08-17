@@ -147,7 +147,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-white">
                 Fin<span className="text-emerald-500 group-hover:text-emerald-400 transition-colors">Log</span>
               </span>
-              <Heart className="w-3.5 h-3.5 text-pink-500 fill-pink-500" />
             </Link>
 
             {/* Offline / Sync Badge */}
