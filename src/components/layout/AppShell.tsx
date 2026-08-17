@@ -9,7 +9,6 @@ import {
   Clock,
   TrendingUp,
   Settings,
-  Flame,
   WifiOff,
   RefreshCw,
   User,

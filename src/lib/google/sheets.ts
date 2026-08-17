@@ -214,6 +214,102 @@ export async function appendTransactionToSheet(
 }
 
 /**
+ * Update an existing transaction row in Google Sheets (finds row by ID, then updates it)
+ */
+export async function updateTransactionInSheet(
+  accessToken: string,
+  spreadsheetId: string,
+  tx: Transaction
+): Promise<boolean> {
+  // First, fetch all rows to find which row number has this transaction ID
+  const readResponse = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.TRANSACTIONS}!A2:A`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!readResponse.ok) return false;
+
+  const readData = await readResponse.json();
+  const idRows: string[][] = readData.values || [];
+
+  const rowIndex = idRows.findIndex((r) => r[0] === tx.id);
+  if (rowIndex === -1) {
+    // Row not found in sheet — append it instead
+    return appendTransactionToSheet(accessToken, spreadsheetId, tx);
+  }
+
+  // Row numbers in Sheets are 1-indexed, plus header row (row 1)
+  const sheetRow = rowIndex + 2;
+  const range = `${SHEETS_TABS.TRANSACTIONS}!A${sheetRow}:J${sheetRow}`;
+
+  const row = [
+    tx.id, tx.date, tx.type, tx.description, tx.category,
+    tx.paymentMethod, tx.amount, tx.recordedBy, tx.createdAt, tx.updatedAt,
+  ];
+
+  const updateResponse = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+    {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ values: [row] }),
+    }
+  );
+
+  return updateResponse.ok;
+}
+
+/**
+ * Delete a transaction row from Google Sheets (finds row by ID, then clears/deletes it)
+ */
+export async function deleteTransactionFromSheet(
+  accessToken: string,
+  spreadsheetId: string,
+  txId: string
+): Promise<boolean> {
+  // Get the spreadsheet metadata to find the sheet ID for Transactions tab
+  const metaResponse = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!metaResponse.ok) return false;
+  const meta = await metaResponse.json();
+  const sheetsArr = meta.sheets || [];
+  const txSheet = sheetsArr.find((s: any) => s.properties?.title === SHEETS_TABS.TRANSACTIONS);
+  if (!txSheet) return false;
+  const sheetId = txSheet.properties.sheetId;
+
+  // Find which row has this transaction ID
+  const readResponse = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.TRANSACTIONS}!A2:A`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!readResponse.ok) return false;
+  const readData = await readResponse.json();
+  const idRows: string[][] = readData.values || [];
+  const rowIndex = idRows.findIndex((r) => r[0] === txId);
+  if (rowIndex === -1) return true; // Already gone
+
+  const sheetRow = rowIndex + 1; // 0-indexed for batchUpdate startIndex
+
+  const deleteResponse = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requests: [{
+          deleteDimension: {
+            range: { sheetId, dimension: "ROWS", startIndex: sheetRow, endIndex: sheetRow + 1 },
+          },
+        }],
+      }),
+    }
+  );
+
+  return deleteResponse.ok;
+}
+
+/**
  * Fetch all transactions from Google Sheet
  */
 export async function fetchTransactionsFromSheet(

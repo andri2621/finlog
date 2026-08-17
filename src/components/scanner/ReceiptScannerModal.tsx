@@ -8,39 +8,47 @@ import {
   X,
   Sparkles,
   UploadCloud,
-  CheckCircle2,
   AlertCircle,
-  Key,
+  CheckCircle2,
+  Save,
 } from "lucide-react";
-import { formatIDR } from "@/lib/utils";
+import { getTodayString, formatInputNumber, parseInputNumber } from "@/lib/utils";
+import { useFinance } from "@/lib/context/FinanceContext";
+import confetti from "canvas-confetti";
 
-interface ReceiptScannerModalProps {
-  onScanResult?: (result: {
-    description: string;
-    amount: number;
-    category: string;
-    date: string;
-  }) => void;
-}
+export function ReceiptScannerModal() {
+  const { addTransaction, expenseCategories, paymentMethods } = useFinance();
 
-export function ReceiptScannerModal({ onScanResult }: ReceiptScannerModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [extractedData, setExtractedData] = useState<{
-    store: string;
-    items: string;
-    amount: number;
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const [formData, setFormData] = useState<{
+    description: string;
+    amountStr: string;
     category: string;
+    paymentMethod: string;
     date: string;
   } | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleClose = () => {
+    setIsOpen(false);
+    setPreviewImage(null);
+    setErrorMessage(null);
+    setFormData(null);
+    setSaveSuccess(false);
+  };
 
   const processImageWithGemini = async (file: File) => {
     setIsProcessing(true);
     setErrorMessage(null);
-    setExtractedData(null);
+    setFormData(null);
+    setSaveSuccess(false);
 
     const apiKey =
       process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
@@ -48,21 +56,18 @@ export function ReceiptScannerModal({ onScanResult }: ReceiptScannerModalProps) 
 
     if (!apiKey) {
       setIsProcessing(false);
-      setErrorMessage(
-        "API Key Gemini belum diset di file .env.local (NEXT_PUBLIC_GEMINI_API_KEY). Silakan masukkan API Key Gemini gratis Anda dari Google AI Studio."
-      );
+      setErrorMessage("API Key Gemini belum diset. Tambahkan NEXT_PUBLIC_GEMINI_API_KEY di file .env.local");
       return;
     }
 
     try {
-      // Convert file to base64
       const reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onload = async () => {
         try {
           const base64Data = (reader.result as string).split(",")[1];
           const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -71,7 +76,7 @@ export function ReceiptScannerModal({ onScanResult }: ReceiptScannerModalProps) 
                   {
                     parts: [
                       {
-                        text: "Analyze this real shopping receipt image in Indonesia. Extract strictly in JSON format with keys: store (string name of merchant/store), items (string summary of main items purchased), amount (numeric integer total price in IDR without punctuation), category (must be one of: Makanan, Transportasi, Tagihan, Kesehatan, Hiburan, Belanja), and date (YYYY-MM-DD format of transaction date). Return ONLY the raw valid JSON object without markdown formatting.",
+                        text: "Analyze this shopping receipt image from Indonesia. Extract strictly as a raw JSON object (no markdown) with these exact keys: store (string: merchant/store brand name only, e.g. 'BreadTalk', 'Alfamart', 'Indomaret'), items (string: all purchased items with their quantities in format 'qty item name' comma-separated, e.g. '1 Cream Bruille, 1 Choco Croissant, 2 Teh Pucuk'), amount (integer: TOTAL price in IDR, digits only, no punctuation), category (one of: Makanan, Transportasi, Tagihan, Kesehatan, Hiburan, Belanja), date (YYYY-MM-DD from receipt, or today if not found). Return ONLY the raw JSON object.",
                       },
                       {
                         inline_data: {
@@ -96,15 +101,24 @@ export function ReceiptScannerModal({ onScanResult }: ReceiptScannerModalProps) 
           if (textResult) {
             const cleanJson = textResult.replace(/```json/g, "").replace(/```/g, "").trim();
             const parsed = JSON.parse(cleanJson);
-            setExtractedData({
-              store: parsed.store || "Toko Belanja",
-              items: parsed.items || "Belanjaan",
-              amount: Number(parsed.amount) || 0,
-              category: parsed.category || "Belanja",
-              date: parsed.date || new Date().toISOString().split("T")[0],
+            const amount = Number(parsed.amount) || 0;
+            const defaultCategory =
+              expenseCategories.find((c) => c.name === parsed.category)?.name ||
+              expenseCategories[0]?.name ||
+              "Makanan";
+            const defaultPayment = paymentMethods[0]?.name || "Cash";
+            const rawDate = parsed.date || getTodayString();
+            const dateStr = rawDate.match(/^\d{4}-\d{2}-\d{2}$/) ? rawDate : getTodayString();
+
+            setFormData({
+              description: `${parsed.store || "Toko"} - ${parsed.items || "Belanjaan"}`,
+              amountStr: formatInputNumber(String(amount)),
+              category: defaultCategory,
+              paymentMethod: defaultPayment,
+              date: dateStr,
             });
           } else {
-            throw new Error("Teks pada struk tidak terbaca jelas oleh AI. Coba foto lebih dekat.");
+            throw new Error("Struk tidak terbaca jelas. Coba foto lebih dekat / terang.");
           }
         } catch (e: any) {
           console.error("Gemini Vision Error:", e);
@@ -119,23 +133,42 @@ export function ReceiptScannerModal({ onScanResult }: ReceiptScannerModalProps) 
     }
   };
 
-  const handleApplyToForm = () => {
-    if (extractedData && onScanResult) {
-      onScanResult({
-        description: `${extractedData.store} - ${extractedData.items}`,
-        amount: extractedData.amount,
-        category: extractedData.category,
-        date: extractedData.date,
+  const handleSave = async () => {
+    if (!formData) return;
+    const numericAmount = parseInputNumber(formData.amountStr);
+    if (numericAmount <= 0) return;
+
+    setIsSaving(true);
+    try {
+      await addTransaction({
+        date: formData.date,
+        type: "expense",
+        description: formData.description.trim() || formData.category,
+        category: formData.category,
+        paymentMethod: formData.paymentMethod,
+        amount: numericAmount,
       });
+
+      confetti({
+        particleCount: 40,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ["#10B981", "#3B82F6", "#F59E0B"],
+      });
+
+      setSaveSuccess(true);
+      setTimeout(() => handleClose(), 1500);
+    } catch (err) {
+      console.error(err);
+      setErrorMessage("Gagal menyimpan transaksi. Coba lagi.");
+    } finally {
+      setIsSaving(false);
     }
-    setIsOpen(false);
-    setExtractedData(null);
-    setPreviewImage(null);
   };
 
   return (
     <>
-      {/* FLOATING ACTION BUTTON (FAB) */}
+      {/* FLOATING ACTION BUTTON */}
       <button
         type="button"
         onClick={() => setIsOpen(true)}
@@ -149,11 +182,11 @@ export function ReceiptScannerModal({ onScanResult }: ReceiptScannerModalProps) 
         </span>
       </button>
 
-      {/* SCANNER MODAL */}
+      {/* MODAL */}
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
           <div
-            className="w-full max-w-md bg-white dark:bg-[#0D1326] border border-slate-200 dark:border-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 flex flex-col max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom-8 duration-300"
+            className="w-full max-w-md bg-white dark:bg-[#0D1326] border border-slate-200 dark:border-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 flex flex-col max-h-[92vh] overflow-y-auto animate-in slide-in-from-bottom-8 duration-300"
             role="dialog"
             aria-modal="true"
           >
@@ -167,82 +200,84 @@ export function ReceiptScannerModal({ onScanResult }: ReceiptScannerModalProps) 
                   <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                     Pindai Struk AI
                     <span className="text-[10px] font-semibold bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                      Live Vision
+                      Gemini 3.5 Vision
                     </span>
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Otomatis membaca foto struk belanja nyata
+                    {formData ? "Cek & edit sebelum disimpan" : "Foto struk, AI baca otomatis"}
                   </p>
                 </div>
               </div>
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={handleClose}
                 className="p-1.5 rounded-full text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Content / Camera View Area */}
-            <div className="my-4 space-y-4">
-              <div className="relative border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 rounded-2xl bg-slate-50 dark:bg-slate-900/60 p-6 flex flex-col items-center justify-center text-center transition-all">
-                {previewImage ? (
-                  <div className="w-full max-h-48 rounded-xl overflow-hidden mb-3 border border-slate-200 dark:border-slate-700">
-                    <img
-                      src={previewImage}
-                      alt="Preview Struk"
-                      className="w-full h-48 object-cover"
-                    />
-                  </div>
-                ) : (
-                  <div className="w-16 h-16 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-emerald-500 mb-3">
-                    <Camera className="w-8 h-8" />
-                  </div>
-                )}
+            <div className="mt-4 space-y-4">
+              {/* SUCCESS */}
+              {saveSuccess && (
+                <div className="p-8 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex flex-col items-center gap-3 text-center">
+                  <CheckCircle2 className="w-12 h-12 text-emerald-500" />
+                  <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">Transaksi Tersimpan!</p>
+                </div>
+              )}
 
-                <p className="text-sm font-semibold text-slate-900 dark:text-white mb-1">
-                  Ambil Foto atau Upload Struk Asli
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mb-4">
-                  Google Gemini 1.5 Flash Vision akan membaca nama toko, total rupiah, dan kategori secara langsung dari foto.
-                </p>
+              {/* STEP 1: Upload */}
+              {!formData && !saveSuccess && (
+                <div className="relative border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 rounded-2xl bg-slate-50 dark:bg-slate-900/60 p-6 flex flex-col items-center justify-center text-center transition-all">
+                  {previewImage ? (
+                    <div className="w-full max-h-48 rounded-xl overflow-hidden mb-3 border border-slate-200 dark:border-slate-700">
+                      <img src={previewImage} alt="Preview Struk" className="w-full h-48 object-cover" />
+                    </div>
+                  ) : (
+                    <div className="w-16 h-16 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-emerald-500 mb-3">
+                      <Camera className="w-8 h-8" />
+                    </div>
+                  )}
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white mb-1">Foto Struk Belanja</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mb-4">
+                    AI akan membaca nama toko, total, dan kategori otomatis.
+                  </p>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    ref={fileInputRef}
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        const file = e.target.files[0];
+                        setPreviewImage(URL.createObjectURL(file));
+                        processImageWithGemini(file);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-500/20 cursor-pointer touch-manipulation"
+                  >
+                    <UploadCloud className="w-4 h-4" />
+                    Ambil / Pilih Foto Struk
+                  </button>
+                </div>
+              )}
 
-                <input
-                  type="file"
-                  accept="image/*"
-                  ref={fileInputRef}
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      const file = e.target.files[0];
-                      setPreviewImage(URL.createObjectURL(file));
-                      processImageWithGemini(file);
-                    }
-                  }}
-                />
-
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-500/20 cursor-pointer touch-manipulation"
-                >
-                  <UploadCloud className="w-4 h-4" />
-                  Pilih Foto dari Galeri / Kamera
-                </button>
-              </div>
-
-              {/* Processing Loader */}
+              {/* Processing */}
               {isProcessing && (
                 <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-3">
-                  <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin shrink-0"></div>
                   <div className="text-xs text-emerald-600 dark:text-emerald-300">
-                    <p className="font-semibold">AI Sedang Membaca Struk Nyata...</p>
+                    <p className="font-semibold">AI Sedang Membaca Struk...</p>
                     <p className="text-[11px]">Mengekstrak harga & kategori</p>
                   </div>
                 </div>
               )}
 
-              {/* Error Alert */}
+              {/* Error */}
               {errorMessage && (
                 <div className="p-3.5 rounded-2xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 flex items-start gap-2.5 text-red-600 dark:text-red-400 text-xs">
                   <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
@@ -250,46 +285,125 @@ export function ReceiptScannerModal({ onScanResult }: ReceiptScannerModalProps) 
                 </div>
               )}
 
-              {/* Extracted Result Preview */}
-              {extractedData && (
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-emerald-500/40 animate-in fade-in slide-in-from-top-2">
-                  <div className="flex items-center gap-2 text-emerald-500 mb-2">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span className="text-xs font-bold uppercase tracking-wider">
-                      Hasil Bacaan AI Berhasil
-                    </span>
+              {/* STEP 2: Editable Review Form */}
+              {formData && !saveSuccess && (
+                <div className="space-y-4 animate-in fade-in duration-300">
+                  {previewImage && (
+                    <div className="w-full h-28 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700">
+                      <img src={previewImage} alt="Struk" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    Struk terbaca. Cek & edit jika perlu, lalu simpan.
                   </div>
 
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between py-1 border-b border-slate-200 dark:border-slate-800">
-                      <span className="text-slate-500 dark:text-slate-400">Toko:</span>
-                      <span className="font-semibold text-slate-900 dark:text-white">{extractedData.store}</span>
-                    </div>
-                    <div className="flex justify-between py-1 border-b border-slate-200 dark:border-slate-800">
-                      <span className="text-slate-500 dark:text-slate-400">Barang:</span>
-                      <span className="font-semibold text-slate-900 dark:text-white truncate max-w-[180px]">
-                        {extractedData.items}
-                      </span>
-                    </div>
-                    <div className="flex justify-between py-1 border-b border-slate-200 dark:border-slate-800">
-                      <span className="text-slate-500 dark:text-slate-400">Kategori:</span>
-                      <span className="font-semibold text-emerald-500">{extractedData.category}</span>
-                    </div>
-                    <div className="flex justify-between py-1">
-                      <span className="text-slate-500 dark:text-slate-400">Total Nominal:</span>
-                      <span className="text-sm font-bold text-slate-900 dark:text-white">
-                        {formatIDR(extractedData.amount)}
-                      </span>
+                  {/* Amount */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Total (IDR)</label>
+                    <div className="flex items-baseline gap-2 bg-white dark:bg-[#0F162A] border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-3 focus-within:border-emerald-500 transition-colors">
+                      <span className="text-sm font-bold text-slate-400">IDR</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={formData.amountStr === "0" ? "" : formData.amountStr}
+                        onChange={(e) => {
+                          const formatted = formatInputNumber(e.target.value);
+                          setFormData((prev) => prev ? { ...prev, amountStr: formatted || "0" } : null);
+                        }}
+                        className="w-full bg-transparent text-2xl font-extrabold text-slate-900 dark:text-white focus:outline-none"
+                      />
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={handleApplyToForm}
-                    className="w-full mt-3 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs transition-all cursor-pointer touch-manipulation"
-                  >
-                    Gunakan Data Ini ke Form Pengeluaran
-                  </button>
+                  {/* Description */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Keterangan</label>
+                    <input
+                      type="text"
+                      value={formData.description}
+                      onChange={(e) => setFormData((prev) => prev ? { ...prev, description: e.target.value } : null)}
+                      className="w-full bg-white dark:bg-[#0F162A] border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 transition-all"
+                    />
+                  </div>
+
+                  {/* Category */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Kategori</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {expenseCategories.map((cat) => (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setFormData((prev) => prev ? { ...prev, category: cat.name } : null)}
+                          className={`py-2 px-2 rounded-xl border text-xs font-medium transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                            formData.category === cat.name
+                              ? "bg-slate-900 dark:bg-slate-800 text-white border-emerald-500 ring-1 ring-emerald-500/40"
+                              : "bg-white dark:bg-[#0F162A]/80 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400"
+                          }`}
+                        >
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                          <span className="truncate">{cat.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Payment Method */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Metode Bayar</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {paymentMethods.map((method) => (
+                        <button
+                          key={method.id}
+                          type="button"
+                          onClick={() => setFormData((prev) => prev ? { ...prev, paymentMethod: method.name } : null)}
+                          className={`py-2 px-2 rounded-xl border text-xs font-medium transition-all cursor-pointer ${
+                            formData.paymentMethod === method.name
+                              ? "bg-slate-900 dark:bg-slate-800 text-white border-emerald-500 ring-1 ring-emerald-500/40"
+                              : "bg-white dark:bg-[#0F162A]/80 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400"
+                          }`}
+                        >
+                          <span className="truncate">{method.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Date */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Tanggal</label>
+                    <input
+                      type="date"
+                      value={formData.date}
+                      onChange={(e) => setFormData((prev) => prev ? { ...prev, date: e.target.value } : null)}
+                      className="w-full bg-white dark:bg-[#0F162A] border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 transition-all"
+                    />
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => { setFormData(null); setPreviewImage(null); setErrorMessage(null); }}
+                      className="py-3 px-4 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    >
+                      Scan Ulang
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSave}
+                      disabled={isSaving || parseInputNumber(formData.amountStr) <= 0}
+                      className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-slate-950 font-bold rounded-2xl text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/20 cursor-pointer touch-manipulation"
+                    >
+                      {isSaving ? (
+                        <span className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <><Save className="w-4 h-4" /> Simpan Transaksi</>
+                      )}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

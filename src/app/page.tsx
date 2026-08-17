@@ -141,7 +141,7 @@ export default function RootPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            Laporan FinLog
+            Laporan
           </h1>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">Ringkasan finansial & anggaran</p>
         </div>

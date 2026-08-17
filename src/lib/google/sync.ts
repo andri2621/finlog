@@ -1,5 +1,5 @@
 import { db } from "../db/db";
-import { appendTransactionToSheet, fetchTransactionsFromSheet } from "./sheets";
+import { appendTransactionToSheet, fetchTransactionsFromSheet, updateTransactionInSheet, deleteTransactionFromSheet } from "./sheets";
 import { Transaction, RecurringExpense } from "../db/types";
 import { getTodayString } from "../utils";
 
@@ -116,38 +116,80 @@ export class SyncEngine {
     this.notify();
 
     try {
-      // 1. Process pending offline mutations
+      // 1. Process pending offline mutations (push local changes to Sheets first)
       const queue = await db.sync_queue.toArray();
       for (const item of queue) {
-        if (item.entity === "transactions" && item.action === "create") {
+        if (item.entity !== "transactions") continue;
+
+        if (item.action === "create") {
           if (token && sheetId) {
             try {
-              const success = await appendTransactionToSheet(
-                token,
-                sheetId,
-                item.data as Transaction
-              );
+              const success = await appendTransactionToSheet(token, sheetId, item.data as Transaction);
               if (success && item.id) {
                 await db.sync_queue.delete(item.id);
               }
             } catch (err: any) {
-              // If token expired (401), stop trying
               if (err?.status === 401 || err?.message?.includes("401")) {
                 this.status.error = "Token expired";
                 break;
               }
             }
           }
-          // Leave in queue if no token — will retry when token is refreshed
+        } else if (item.action === "update") {
+          if (token && sheetId) {
+            try {
+              await updateTransactionInSheet(token, sheetId, item.data as Transaction);
+              if (item.id) await db.sync_queue.delete(item.id);
+            } catch (err: any) {
+              if (err?.status === 401 || err?.message?.includes("401")) {
+                this.status.error = "Token expired";
+                break;
+              }
+            }
+          }
+        } else if (item.action === "delete") {
+          if (token && sheetId) {
+            try {
+              await deleteTransactionFromSheet(token, sheetId, item.data?.id || "");
+              if (item.id) await db.sync_queue.delete(item.id);
+            } catch (err: any) {
+              if (err?.status === 401 || err?.message?.includes("401")) {
+                this.status.error = "Token expired";
+                break;
+              }
+            }
+          }
         }
-        // Other entity types stay in queue until full sync support is added
       }
 
-      // 2. If Google Sheet connected, pull latest changes from partner
+      // 2. Pull latest from Google Sheet — merge using updatedAt (local wins if newer)
       if (token && sheetId) {
         const remoteTxs = await fetchTransactionsFromSheet(token, sheetId);
         if (remoteTxs.length > 0) {
-          await db.transactions.bulkPut(remoteTxs);
+          // Load all local transactions for comparison
+          const localTxs = await db.transactions.toArray();
+          const localMap = new Map(localTxs.map((tx) => [tx.id, tx]));
+
+          const toWrite: Transaction[] = [];
+          for (const remote of remoteTxs) {
+            const local = localMap.get(remote.id);
+            if (!local) {
+              // New from partner — add it
+              toWrite.push(remote);
+            } else {
+              // Only overwrite local if remote is strictly newer
+              const localUpdated = local.updatedAt || local.createdAt || "";
+              const remoteUpdated = remote.updatedAt || remote.createdAt || "";
+              if (remoteUpdated > localUpdated) {
+                toWrite.push(remote);
+              }
+              // Otherwise keep local (it was edited more recently)
+            }
+          }
+
+          if (toWrite.length > 0) {
+            await db.transactions.bulkPut(toWrite);
+          }
         }
       }
 

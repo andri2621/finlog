@@ -25,6 +25,9 @@ export default function HistoryPage() {
     setSelectedMonth,
     deleteTransaction,
     updateTransaction,
+    expenseCategories,
+    incomeCategories,
+    paymentMethods,
   } = useFinance();
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -33,6 +36,8 @@ export default function HistoryPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [editDesc, setEditDesc] = useState("");
   const [editAmount, setEditAmount] = useState("");
+  const [editCategory, setEditCategory] = useState("");
+  const [editPaymentMethod, setEditPaymentMethod] = useState("");
 
   // Filter transactions
   const filteredTransactions = useMemo(() => {
@@ -75,6 +80,8 @@ export default function HistoryPage() {
     setSelectedTxForAction(tx);
     setEditDesc(tx.description);
     setEditAmount(formatInputNumber(String(tx.amount)));
+    setEditCategory(tx.category);
+    setEditPaymentMethod(tx.paymentMethod);
     setIsEditing(true);
   };
 
@@ -84,6 +91,8 @@ export default function HistoryPage() {
     await updateTransaction(selectedTxForAction.id, {
       description: editDesc,
       amount: amt,
+      category: editCategory,
+      paymentMethod: editPaymentMethod,
     });
     setIsEditing(false);
     setSelectedTxForAction(null);
@@ -102,7 +111,7 @@ export default function HistoryPage() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            Riwayat FinLog
+            Riwayat
           </h1>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">
             {filteredTransactions.length} catatan transaksi
@@ -285,35 +294,35 @@ export default function HistoryPage() {
             </div>
 
             <div className="space-y-2 text-xs">
-              <div className="flex justify-between py-1">
+              <div className="flex justify-between py-1 gap-2">
                 <span className="text-slate-500 dark:text-slate-400">Deskripsi:</span>
                 <span className="font-bold text-slate-900 dark:text-white">
                   {selectedTxForAction.description}
                 </span>
               </div>
-              <div className="flex justify-between py-1">
+              <div className="flex justify-between py-1 gap-2">
                 <span className="text-slate-500 dark:text-slate-400">Jumlah:</span>
                 <span className="font-extrabold text-sm text-slate-900 dark:text-white">
                   {formatIDR(selectedTxForAction.amount)}
                 </span>
               </div>
-              <div className="flex justify-between py-1">
+              <div className="flex justify-between py-1 gap-2">
                 <span className="text-slate-500 dark:text-slate-400">Kategori:</span>
                 <span className="font-semibold text-slate-900 dark:text-white">{selectedTxForAction.category}</span>
               </div>
-              <div className="flex justify-between py-1">
+              <div className="flex justify-between py-1 gap-2">
                 <span className="text-slate-500 dark:text-slate-400">Metode Bayar:</span>
                 <span className="font-semibold text-slate-900 dark:text-white">
                   {selectedTxForAction.paymentMethod}
                 </span>
               </div>
-              <div className="flex justify-between py-1">
+              <div className="flex justify-between py-1 gap-2">
                 <span className="text-slate-500 dark:text-slate-400">Dicatat Oleh:</span>
                 <span className="font-semibold text-emerald-500">
                   {selectedTxForAction.recordedBy}
                 </span>
               </div>
-              <div className="flex justify-between py-1">
+              <div className="flex justify-between py-1 gap-2">
                 <span className="text-slate-500 dark:text-slate-400">Tanggal:</span>
                 <span className="font-medium text-slate-700 dark:text-slate-300">{selectedTxForAction.date}</span>
               </div>
@@ -340,47 +349,97 @@ export default function HistoryPage() {
       {/* EDIT MODAL */}
       {isEditing && selectedTxForAction && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-md bg-white dark:bg-[#0D1326] border border-slate-200 dark:border-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-4">
+          <div className="w-full max-w-md bg-white dark:bg-[#0D1326] border border-slate-200 dark:border-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white pb-2 border-b border-slate-200 dark:border-slate-800">
               Edit Transaksi
             </h3>
 
+            {/* Deskripsi */}
             <div>
-              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">
+              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                 Deskripsi
               </label>
               <input
                 type="text"
                 value={editDesc}
                 onChange={(e) => setEditDesc(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none"
+                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 transition-colors"
               />
             </div>
 
+            {/* Jumlah */}
             <div>
-              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">
+              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                 Jumlah (IDR)
               </label>
               <input
                 type="text"
+                inputMode="numeric"
                 value={editAmount}
                 onChange={(e) => setEditAmount(formatInputNumber(e.target.value))}
-                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 dark:text-white focus:outline-none"
+                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 transition-colors"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-2 pt-2">
+            {/* Kategori — adapt to expense vs income */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                Kategori
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {(selectedTxForAction.type === "income" ? incomeCategories : expenseCategories).map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setEditCategory(cat.name)}
+                    className={`py-2 px-2 rounded-xl border text-xs font-medium transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      editCategory === cat.name
+                        ? "bg-slate-900 dark:bg-slate-800 text-white border-emerald-500 ring-1 ring-emerald-500/40"
+                        : "bg-white dark:bg-[#0F162A]/80 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400"
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                    <span className="truncate">{cat.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Metode Pembayaran */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                Metode Pembayaran
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {paymentMethods.map((method) => (
+                  <button
+                    key={method.id}
+                    type="button"
+                    onClick={() => setEditPaymentMethod(method.name)}
+                    className={`py-2 px-2 rounded-xl border text-xs font-medium transition-all cursor-pointer ${
+                      editPaymentMethod === method.name
+                        ? "bg-slate-900 dark:bg-slate-800 text-white border-emerald-500 ring-1 ring-emerald-500/40"
+                        : "bg-white dark:bg-[#0F162A]/80 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400"
+                    }`}
+                  >
+                    <span className="truncate">{method.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
               <button
                 onClick={() => setIsEditing(false)}
-                className="py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium rounded-xl text-xs"
+                className="py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium rounded-xl text-xs cursor-pointer"
               >
                 Batal
               </button>
               <button
                 onClick={handleSaveEdit}
-                className="py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs shadow-md"
+                className="py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs shadow-md cursor-pointer"
               >
-                Simpan Perubahan
+                Simpan
               </button>
             </div>
           </div>

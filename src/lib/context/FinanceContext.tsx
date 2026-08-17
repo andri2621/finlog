@@ -282,13 +282,13 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateTransaction = async (id: string, updates: Partial<Transaction>) => {
-    const updatedData = { ...updates, updatedAt: new Date().toISOString() };
-    await db.transactions.update(id, updatedData);
-    const full = await db.transactions.get(id);
-    if (full) {
-      await syncEngine.queueAction("update", "transactions", full);
-      syncEngine.syncNow().catch(console.error);
-    }
+    // Use put() instead of update() to reliably trigger useLiveQuery re-render
+    const existing = await db.transactions.get(id);
+    if (!existing) return;
+    const merged: Transaction = { ...existing, ...updates, updatedAt: new Date().toISOString() };
+    await db.transactions.put(merged);
+    await syncEngine.queueAction("update", "transactions", merged);
+    syncEngine.syncNow().catch(console.error);
   };
 
   const deleteTransaction = async (id: string) => {

@@ -151,14 +151,15 @@ export default function LoginPage() {
           )}
         </button>
 
-        <button
+        {/* <button
           type="button"
           onClick={handleDemo}
           className="w-full py-3 px-4 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold rounded-2xl text-xs flex items-center justify-center gap-1 transition-colors cursor-pointer"
         >
           <span>Login / Setup Spreadsheet Manual</span>
           <ArrowRight className="w-3.5 h-3.5" />
-        </button>
+        </button> */}
+        
 
         <div className="flex items-center justify-center gap-1.5 text-[10px] text-slate-500 pt-1">
           <ShieldCheck className="w-3.5 h-3.5" />
