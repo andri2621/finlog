@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Override Tailwind v4 default media query dark mode to use class-based dark mode */
+@custom-variant dark (&:is(.dark *));
+
 :root {
   --background: #0A0F1D;
   --foreground: #F8FAFC;
@@ -29,8 +32,15 @@ body {
   color: var(--foreground);
   font-feature-settings: "rlig" 1, "calt" 1;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
   overscroll-behavior-y: none;
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Ensure all buttons, chips, and links are immediately responsive to mobile touch */
+button, a, input, select, textarea, [role="button"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Custom modern scrollbars */

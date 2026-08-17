@@ -18,6 +18,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const savedTheme = (localStorage.getItem("finlog_theme") as Theme) || "dark";
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setThemeState(savedTheme);
   }, []);
 
@@ -32,6 +33,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       actualTheme = theme;
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setResolvedTheme(actualTheme);
 
     if (actualTheme === "dark") {

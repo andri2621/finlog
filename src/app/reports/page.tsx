@@ -205,7 +205,7 @@ export default function ReportsPage() {
         {showAllTimeDetails && (
           <div className="mt-4 pt-4 border-t border-slate-800/80 space-y-3 animate-in fade-in duration-200">
             <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/40 to-slate-900 border border-emerald-500/20">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              <p className="text-[10px] font-bold text-white dark:text-slate-400 uppercase tracking-wider">
                 Saldo Bersih Sepanjang Waktu
               </p>
               <p className="text-xl font-extrabold text-white mt-1">
@@ -326,7 +326,7 @@ export default function ReportsPage() {
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={dailyChartData}
-              onClick={(data) => {
+              onClick={(data: any) => {
                 if (data && data.activePayload && data.activePayload[0]) {
                   setActiveDayData(data.activePayload[0].payload);
                 }

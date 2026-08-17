@@ -15,11 +15,11 @@ export const SHEETS_TABS = {
 };
 
 /**
- * Creates the standard DuitLog multi-tab spreadsheet in user's Google Drive.
+ * Creates the standard FinLog multi-tab spreadsheet in user's Google Drive.
  */
-export async function createDuitLogSpreadsheet(
+export async function createFinLogSpreadsheet(
   accessToken: string,
-  title: string = "DUITLOG-KEUANGAN"
+  title: string = "FINLOG"
 ): Promise<{ spreadsheetId: string; spreadsheetUrl: string }> {
   const response = await fetch("https://sheets.googleapis.com/v4/spreadsheets", {
     method: "POST",

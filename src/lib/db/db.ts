@@ -10,7 +10,7 @@ import {
   UserProfile,
 } from "./types";
 
-export class DuitLogDatabase extends Dexie {
+export class FinLogDatabase extends Dexie {
   transactions!: Table<Transaction, string>;
   budgets!: Table<Budget, string>;
   savings!: Table<SavingsGoal, string>;
@@ -21,7 +21,7 @@ export class DuitLogDatabase extends Dexie {
   user_profile!: Table<UserProfile, string>;
 
   constructor() {
-    super("DuitLogDB");
+    super("FinLogDB");
     this.version(1).stores({
       transactions: "id, date, type, category, paymentMethod, recordedBy, createdAt, synced",
       budgets: "id, month, category",
@@ -35,4 +35,4 @@ export class DuitLogDatabase extends Dexie {
   }
 }
 
-export const db = new DuitLogDatabase();
+export const db = new FinLogDatabase();

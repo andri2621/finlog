@@ -15,7 +15,8 @@ export function PartnerModal({ isOpen, onClose }: PartnerModalProps) {
 
   if (!isOpen) return null;
 
-  const inviteLink = `https://finlog.app/join?sheetId=${spreadsheetId || "demo-finlog-sheet"}`;
+  const host = typeof window !== "undefined" ? window.location.origin : "https://finlog.app";
+  const inviteLink = `${host}/onboarding?sheetId=${spreadsheetId || "demo-finlog-sheet"}`;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(inviteLink);

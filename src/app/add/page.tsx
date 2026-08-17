@@ -97,7 +97,7 @@ export default function AddExpensePage() {
             </div>
             <button
               onClick={clearLastSavedTransaction}
-              className="text-[11px] text-slate-400 hover:text-white"
+              className="text-[11px] text-slate-400 hover:text-white cursor-pointer"
             >
               ✕
             </button>
@@ -113,14 +113,14 @@ export default function AddExpensePage() {
                 setSelectedPaymentMethod(lastSavedTransaction.paymentMethod);
                 clearLastSavedTransaction();
               }}
-              className="py-1 px-2 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-200 flex items-center justify-center gap-1 font-medium transition-colors"
+              className="py-1 px-2 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-200 flex items-center justify-center gap-1 font-medium transition-colors cursor-pointer"
             >
               <Edit2 className="w-3.5 h-3.5" /> Ubah
             </button>
             <button
               type="button"
               onClick={undoLastTransaction}
-              className="py-1 px-2 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-red-300 flex items-center justify-center gap-1 font-medium transition-colors"
+              className="py-1 px-2 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-red-300 flex items-center justify-center gap-1 font-medium transition-colors cursor-pointer"
             >
               <Undo2 className="w-3.5 h-3.5" /> Urungkan
             </button>
@@ -134,19 +134,19 @@ export default function AddExpensePage() {
       {/* PAGE TITLE */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-lg font-bold text-[var(--foreground)] tracking-tight flex items-center gap-1.5">
-            <TrendingDown className="w-5 h-5 text-emerald-400" />
+          <h1 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-1.5">
+            <TrendingDown className="w-5 h-5 text-emerald-500" />
             Catat Pengeluaran
           </h1>
-          <p className="text-[11px] text-slate-400">
-            Dicatat oleh <span className="text-emerald-400 font-semibold">{user?.name}</span>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            Dicatat oleh <span className="text-emerald-500 font-semibold">{user?.name}</span>
           </p>
         </div>
 
         <button
           type="button"
           onClick={() => setShowBudgetModal(true)}
-          className="text-[11px] font-medium text-slate-400 hover:text-emerald-400 flex items-center gap-0.5 bg-slate-800/60 px-2.5 py-1 rounded-full border border-slate-700/60 transition-colors"
+          className="text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:text-emerald-500 flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800/60 px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700/60 transition-colors cursor-pointer"
         >
           <span>Atur Anggaran</span>
           <ChevronRight className="w-3 h-3" />
@@ -156,7 +156,7 @@ export default function AddExpensePage() {
       {/* TRANSACTION INPUT FORM */}
       <form onSubmit={handleSave} className="space-y-4">
         {/* BIG NUMERIC DISPLAY (IDR 0) */}
-        <div className="pb-3 border-b border-slate-700/80">
+        <div className="pb-3 border-b border-slate-200 dark:border-slate-700/80">
           <div className="flex items-baseline gap-2">
             <span className="text-sm font-bold text-slate-400">IDR</span>
             <input
@@ -168,7 +168,7 @@ export default function AddExpensePage() {
                 setAmountStr(formatted || "0");
               }}
               placeholder="0"
-              className="w-full bg-transparent text-4xl sm:text-5xl font-extrabold text-[var(--foreground)] placeholder:text-slate-600 focus:outline-none tracking-tight"
+              className="w-full bg-transparent text-4xl sm:text-5xl font-extrabold text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none tracking-tight"
             />
           </div>
         </div>
@@ -183,7 +183,7 @@ export default function AddExpensePage() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Apa yang kamu beli?"
-            className="w-full bg-[#0F162A] border border-slate-700/80 hover:border-slate-600 focus:border-emerald-500 rounded-2xl px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:outline-none transition-all"
+            className="w-full bg-white dark:bg-[#0F162A] border border-slate-200 dark:border-slate-700/80 hover:border-slate-300 dark:hover:border-slate-600 focus:border-emerald-500 rounded-2xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none transition-all shadow-sm"
           />
         </div>
 
@@ -200,10 +200,10 @@ export default function AddExpensePage() {
                   key={cat.id}
                   type="button"
                   onClick={() => setSelectedCategory(cat.name)}
-                  className={`py-2.5 px-2 rounded-2xl border text-xs font-medium transition-all duration-150 flex items-center justify-center gap-1.5 ${
+                  className={`py-2.5 px-2 rounded-2xl border text-xs font-medium transition-all duration-150 flex items-center justify-center gap-1.5 cursor-pointer ${
                     isSelected
-                      ? "bg-slate-800/95 border-emerald-400 text-white shadow-md shadow-emerald-500/10 font-semibold ring-1 ring-emerald-500/40"
-                      : "bg-[#0F162A]/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
+                      ? "bg-slate-900 dark:bg-slate-800 text-white border-emerald-500 shadow-md font-semibold ring-1 ring-emerald-500/40"
+                      : "bg-white dark:bg-[#0F162A]/80 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
                   }`}
                 >
                   <span
@@ -230,10 +230,10 @@ export default function AddExpensePage() {
                   key={method.id}
                   type="button"
                   onClick={() => setSelectedPaymentMethod(method.name)}
-                  className={`py-2.5 px-2 rounded-2xl border text-xs font-medium transition-all duration-150 flex items-center justify-center gap-1 ${
+                  className={`py-2.5 px-2 rounded-2xl border text-xs font-medium transition-all duration-150 flex items-center justify-center gap-1 cursor-pointer ${
                     isSelected
-                      ? "bg-slate-800/95 border-emerald-400 text-white shadow-md font-semibold ring-1 ring-emerald-500/40"
-                      : "bg-[#0F162A]/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
+                      ? "bg-slate-900 dark:bg-slate-800 text-white border-emerald-500 shadow-md font-semibold ring-1 ring-emerald-500/40"
+                      : "bg-white dark:bg-[#0F162A]/80 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
                   }`}
                 >
                   <span className="truncate">{method.name}</span>
@@ -243,7 +243,7 @@ export default function AddExpensePage() {
           </div>
         </div>
 
-        {/* DATE PICKER (Clickable everywhere) */}
+        {/* DATE PICKER */}
         <div>
           <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
             Tanggal
@@ -262,9 +262,9 @@ export default function AddExpensePage() {
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-full bg-[#0F162A] border border-slate-700/80 rounded-2xl pl-11 pr-4 py-3 text-sm font-medium text-white focus:outline-none focus:border-emerald-500 transition-colors cursor-pointer"
+              className="w-full bg-white dark:bg-[#0F162A] border border-slate-200 dark:border-slate-700/80 rounded-2xl pl-11 pr-4 py-3 text-sm font-medium text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 transition-colors cursor-pointer shadow-sm"
             />
-            <Calendar className="w-5 h-5 text-emerald-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Calendar className="w-5 h-5 text-emerald-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
         </div>
 
@@ -276,7 +276,7 @@ export default function AddExpensePage() {
             className={`w-full py-3.5 rounded-2xl font-extrabold text-sm transition-all duration-200 flex items-center justify-center gap-2 shadow-lg ${
               numericAmount > 0
                 ? "bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/25 active:scale-[0.98] cursor-pointer"
-                : "bg-slate-800 text-slate-500 border border-slate-700/60 cursor-not-allowed opacity-70"
+                : "bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-300 dark:border-slate-700/60 cursor-not-allowed opacity-70"
             }`}
           >
             {isSubmitting ? (

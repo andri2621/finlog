@@ -155,6 +155,14 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, []);
 
+  // Update syncEngine credentials
+  useEffect(() => {
+    syncEngine.setCredentials(accessToken || null, spreadsheetId || null);
+    if (accessToken && spreadsheetId) {
+      syncEngine.syncNow().catch(console.error);
+    }
+  }, [accessToken, spreadsheetId]);
+
   // Check recurring on startup
   useEffect(() => {
     if (user?.name) {
@@ -248,6 +256,9 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     await db.transactions.add(newTx);
     await syncEngine.queueAction("create", "transactions", newTx);
 
+    // Auto-sync immediately to Google Sheets if connected
+    syncEngine.syncNow().catch(console.error);
+
     // Update streak if today
     if (user && data.date === getTodayString()) {
       const today = getTodayString();
@@ -276,6 +287,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     const full = await db.transactions.get(id);
     if (full) {
       await syncEngine.queueAction("update", "transactions", full);
+      syncEngine.syncNow().catch(console.error);
     }
   };
 
@@ -284,6 +296,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     if (tx) {
       await db.transactions.delete(id);
       await syncEngine.queueAction("delete", "transactions", { id });
+      syncEngine.syncNow().catch(console.error);
     }
   };
 
@@ -390,7 +403,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
   };
 
   const syncNow = async () => {
-    await syncEngine.syncNow(accessToken || undefined, spreadsheetId || undefined);
+    await syncEngine.syncNow();
   };
 
   return (

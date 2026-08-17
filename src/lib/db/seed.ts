@@ -1,6 +1,5 @@
 import { db } from "./db";
-import { CategoryConfig, UserProfile, Budget } from "./types";
-import { getCurrentMonthString, getTodayString } from "../utils";
+import { CategoryConfig } from "./types";
 
 export const DEFAULT_EXPENSE_CATEGORIES: Array<Omit<CategoryConfig, "id">> = [
   { type: "expense_category", name: "Makanan", color: "#F59E0B", icon: "Utensils", order: 1 },
@@ -44,113 +43,10 @@ export async function initializeDatabaseIfEmpty() {
       ...DEFAULT_PAYMENT_METHODS.map((c, i) => ({ ...c, id: `cat_pay_${i + 1}` })),
       ...DEFAULT_POCKETS.map((c, i) => ({ ...c, id: `cat_poc_${i + 1}` })),
     ];
-    await db.categories.bulkAdd(allConfigs);
-  }
-
-  // Initialize sample user if none exists
-  const userCount = await db.user_profile.count();
-  if (userCount === 0) {
-    const defaultUser: UserProfile = {
-      id: "user_primary",
-      name: "Andri Setiawan",
-      email: "andri.setiawan996@gmail.com",
-      streakCount: 1,
-      lastActiveDate: getTodayString(),
-      spreadsheetName: "TES-DUITLOG",
-      reminderTime: "20:00",
-      reminderEnabled: true,
-      theme: "dark",
-    };
-    await db.user_profile.put(defaultUser);
-  }
-
-  // Seed sample transactions if empty to show realistic preview matching screenshots
-  const txCount = await db.transactions.count();
-  if (txCount === 0) {
-    const today = getTodayString();
-    const currentMonth = getCurrentMonthString();
-    
-    await db.transactions.bulkAdd([
-      {
-        id: "tx_sample_1",
-        date: today,
-        type: "expense",
-        description: "Telur gulung",
-        category: "Makanan",
-        paymentMethod: "Cash",
-        amount: 20000,
-        recordedBy: "Andri Setiawan",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        synced: true,
-      },
-      {
-        id: "tx_sample_2",
-        date: today,
-        type: "expense",
-        description: "1SN NAYA CELL",
-        category: "Tagihan",
-        paymentMethod: "Cash",
-        amount: 105000,
-        recordedBy: "Andri Setiawan",
-        createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-        updatedAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-        synced: true,
-      },
-      {
-        id: "tx_sample_3",
-        date: `${currentMonth}-01`,
-        type: "income",
-        description: "Gaji Bulanan",
-        category: "Gaji",
-        paymentMethod: "Bank Transfer",
-        amount: 9200000,
-        recordedBy: "Andri Setiawan",
-        createdAt: new Date(Date.now() - 86400000 * 15).toISOString(),
-        updatedAt: new Date(Date.now() - 86400000 * 15).toISOString(),
-        synced: true,
-      },
-    ]);
-
-    // Sample default budget (5,000,000 overall, 30,000 Makanan)
-    await db.budgets.bulkAdd([
-      {
-        id: `bgt_${currentMonth}_TOTAL`,
-        month: currentMonth,
-        category: "TOTAL",
-        limitAmount: 5000000,
-      },
-      {
-        id: `bgt_${currentMonth}_Makanan`,
-        month: currentMonth,
-        category: "Makanan",
-        limitAmount: 30000,
-      },
-    ]);
-
-    // Sample savings goal
-    await db.savings.put({
-      id: "sav_wedding_01",
-      name: "Menikah",
-      targetAmount: 50000000,
-      currentAmount: 0,
-      targetDate: "2026-12-27",
-      icon: "Gem",
-      color: "#EC4899",
-    });
-
-    // Sample recurring expense
-    await db.recurring.put({
-      id: "rec_wifi_01",
-      name: "IndiHome Wi-Fi",
-      amount: 320000,
-      category: "Tagihan",
-      paymentMethod: "Bank Transfer",
-      frequency: "monthly",
-      dayOfMonth: 15,
-      autoRecord: true,
-      lastRecordedDate: `${currentMonth}-15`,
-      isActive: true,
-    });
+    try {
+      await db.categories.bulkPut(allConfigs);
+    } catch (error) {
+      console.error("Failed to seed categories:", error);
+    }
   }
 }

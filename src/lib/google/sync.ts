@@ -27,6 +27,13 @@ export class SyncEngine {
       window.addEventListener("online", () => this.handleNetworkChange(true));
       window.addEventListener("offline", () => this.handleNetworkChange(false));
       this.updatePendingCount();
+
+      // Auto-sync every 2 minutes to catch partner changes
+      setInterval(() => {
+        if (this.status.isOnline && this.credentials.accessToken && this.credentials.spreadsheetId) {
+          this.syncNow().catch(() => {});
+        }
+      }, 2 * 60 * 1000);
     }
   }
 
@@ -68,6 +75,13 @@ export class SyncEngine {
   /**
    * Queue a transaction or entity for offline-first sync
    */
+  private credentials: { accessToken?: string; spreadsheetId?: string } = {};
+
+  public setCredentials(accessToken: string | null, spreadsheetId: string | null) {
+    this.credentials.accessToken = accessToken || undefined;
+    this.credentials.spreadsheetId = spreadsheetId || undefined;
+  }
+
   public async queueAction(
     action: "create" | "update" | "delete",
     entity: "transactions" | "budgets" | "savings" | "savings_logs" | "recurring" | "config",
@@ -94,6 +108,9 @@ export class SyncEngine {
     if (this.status.isSyncing) return;
     if (!this.status.isOnline) return;
 
+    const token = accessToken || this.credentials.accessToken;
+    const sheetId = spreadsheetId || this.credentials.spreadsheetId;
+
     this.status.isSyncing = true;
     this.status.error = null;
     this.notify();
@@ -103,28 +120,32 @@ export class SyncEngine {
       const queue = await db.sync_queue.toArray();
       for (const item of queue) {
         if (item.entity === "transactions" && item.action === "create") {
-          if (accessToken && spreadsheetId) {
-            const success = await appendTransactionToSheet(
-              accessToken,
-              spreadsheetId,
-              item.data as Transaction
-            );
-            if (success) {
-              if (item.id) await db.sync_queue.delete(item.id);
+          if (token && sheetId) {
+            try {
+              const success = await appendTransactionToSheet(
+                token,
+                sheetId,
+                item.data as Transaction
+              );
+              if (success && item.id) {
+                await db.sync_queue.delete(item.id);
+              }
+            } catch (err: any) {
+              // If token expired (401), stop trying
+              if (err?.status === 401 || err?.message?.includes("401")) {
+                this.status.error = "Token expired";
+                break;
+              }
             }
-          } else {
-            // Local mode, simulate sync success
-            if (item.id) await db.sync_queue.delete(item.id);
           }
-        } else {
-          // Other entities
-          if (item.id) await db.sync_queue.delete(item.id);
+          // Leave in queue if no token — will retry when token is refreshed
         }
+        // Other entity types stay in queue until full sync support is added
       }
 
       // 2. If Google Sheet connected, pull latest changes from partner
-      if (accessToken && spreadsheetId) {
-        const remoteTxs = await fetchTransactionsFromSheet(accessToken, spreadsheetId);
+      if (token && sheetId) {
+        const remoteTxs = await fetchTransactionsFromSheet(token, sheetId);
         if (remoteTxs.length > 0) {
           await db.transactions.bulkPut(remoteTxs);
         }
