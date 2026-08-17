@@ -236,11 +236,11 @@ export default function RootPage() {
 
         {showAllTimeDetails && (
           <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800/80 space-y-3 animate-in fade-in duration-200">
-            <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-gradient-to-r dark:from-emerald-950/40 dark:to-slate-900 border border-emerald-200 dark:border-emerald-500/20">
-              <p className="text-[10px] font-bold text-slate-900 uppercase tracking-wider">
+            <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-gradient-to-br dark:from-[#0F2228] dark:via-[#0D1826] dark:to-[#0A101D] border-emerald-200 dark:border-emerald-500/20">
+              <p className="text-[10px] font-bold text-slate-900 dark:text-slate-300 uppercase tracking-wider">
                 Saldo Bersih Sepanjang Waktu
               </p>
-              <p className="text-xl font-extrabold text-slate-900 dark:text-white mt-1">
+              <p className="text-xl font-extrabold text-emerald-500 mt-1">
                 {formatIDR(totalAllTimeBalance)}
               </p>
               <div className="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
