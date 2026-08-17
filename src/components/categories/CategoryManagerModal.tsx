@@ -34,6 +34,8 @@ export function CategoryManagerModal({
   const [newItemName, setNewItemName] = useState("");
   const [selectedColor, setSelectedColor] = useState("#10B981");
 
+  const [itemToDelete, setItemToDelete] = useState<CategoryConfig | null>(null);
+
   if (!isOpen) return null;
 
   const currentList =
@@ -47,6 +49,12 @@ export function CategoryManagerModal({
     if (!newItemName.trim()) return;
     await addCategoryItem(activeTab, newItemName.trim(), selectedColor);
     setNewItemName("");
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!itemToDelete) return;
+    await deleteCategoryItem(itemToDelete.id);
+    setItemToDelete(null);
   };
 
   return (
@@ -74,10 +82,41 @@ export function CategoryManagerModal({
           </button>
         </div>
 
+        {/* Delete Confirmation Alert */}
+        {itemToDelete && (
+          <div className="my-3 p-3.5 rounded-2xl bg-red-950/40 border border-red-500/30 space-y-2.5 animate-in fade-in duration-200">
+            <p className="text-xs font-bold text-red-300">
+              Hapus &quot;{itemToDelete.name}&quot;?
+            </p>
+            <p className="text-[11px] text-red-400/90 leading-relaxed">
+              Opsi ini akan dihapus dari pilihan input. Catatan transaksi lama yang sudah menggunakan opsi ini tetap aman.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="py-1.5 px-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Ya, Hapus
+              </button>
+              <button
+                type="button"
+                onClick={() => setItemToDelete(null)}
+                className="py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Tab Selectors */}
         <div className="grid grid-cols-3 gap-1.5 my-3 p-1 rounded-2xl bg-slate-900 border border-slate-800">
           <button
-            onClick={() => setActiveTab("expense_category")}
+            onClick={() => {
+              setActiveTab("expense_category");
+              setItemToDelete(null);
+            }}
             className={`py-2 rounded-xl text-xs font-semibold transition-all ${
               activeTab === "expense_category"
                 ? "bg-slate-800 text-white shadow-sm"
@@ -87,7 +126,10 @@ export function CategoryManagerModal({
             Pengeluaran
           </button>
           <button
-            onClick={() => setActiveTab("payment_method")}
+            onClick={() => {
+              setActiveTab("payment_method");
+              setItemToDelete(null);
+            }}
             className={`py-2 rounded-xl text-xs font-semibold transition-all ${
               activeTab === "payment_method"
                 ? "bg-slate-800 text-white shadow-sm"
@@ -97,7 +139,10 @@ export function CategoryManagerModal({
             Metode Bayar
           </button>
           <button
-            onClick={() => setActiveTab("income_category")}
+            onClick={() => {
+              setActiveTab("income_category");
+              setItemToDelete(null);
+            }}
             className={`py-2 rounded-xl text-xs font-semibold transition-all ${
               activeTab === "income_category"
                 ? "bg-slate-800 text-white shadow-sm"
@@ -124,8 +169,10 @@ export function CategoryManagerModal({
               </div>
 
               <button
-                onClick={() => deleteCategoryItem(item.id)}
-                className="p-1 text-slate-500 hover:text-red-400 transition-colors"
+                type="button"
+                onClick={() => setItemToDelete(item)}
+                className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-800/60 rounded-lg transition-colors cursor-pointer"
+                aria-label={`Hapus ${item.name}`}
               >
                 <Trash2 className="w-4 h-4" />
               </button>

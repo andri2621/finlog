@@ -321,11 +321,13 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     };
     await db.budgets.put(budgetData);
     await syncEngine.queueAction("create", "budgets", budgetData);
+    syncEngine.syncNow().catch(console.error);
   };
 
   const deleteBudget = async (id: string) => {
     await db.budgets.delete(id);
     await syncEngine.queueAction("delete", "budgets", { id });
+    syncEngine.syncNow().catch(console.error);
   };
 
   const addSavingsGoal = async (goal: Omit<SavingsGoal, "id" | "currentAmount">) => {
@@ -336,6 +338,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     };
     await db.savings.add(newGoal);
     await syncEngine.queueAction("create", "savings", newGoal);
+    syncEngine.syncNow().catch(console.error);
   };
 
   const depositSavings = async (savingsId: string, amount: number, pocket: string) => {
@@ -344,6 +347,11 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
 
     const newCurrent = goal.currentAmount + amount;
     await db.savings.update(savingsId, { currentAmount: newCurrent });
+
+    const updatedGoal = await db.savings.get(savingsId);
+    if (updatedGoal) {
+      await syncEngine.queueAction("update", "savings", updatedGoal);
+    }
 
     const log: SavingsLog = {
       id: generateId("sav_log"),
@@ -357,6 +365,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     };
     await db.savings_logs.add(log);
     await syncEngine.queueAction("create", "savings_logs", log);
+    syncEngine.syncNow().catch(console.error);
   };
 
   const addRecurringExpense = async (rec: Omit<RecurringExpense, "id" | "isActive">) => {
@@ -367,15 +376,22 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     };
     await db.recurring.add(newRec);
     await syncEngine.queueAction("create", "recurring", newRec);
+    syncEngine.syncNow().catch(console.error);
   };
 
   const toggleRecurringExpense = async (id: string, active: boolean) => {
     await db.recurring.update(id, { isActive: active });
+    const updated = await db.recurring.get(id);
+    if (updated) {
+      await syncEngine.queueAction("update", "recurring", updated);
+      syncEngine.syncNow().catch(console.error);
+    }
   };
 
   const deleteRecurringExpense = async (id: string) => {
     await db.recurring.delete(id);
     await syncEngine.queueAction("delete", "recurring", { id });
+    syncEngine.syncNow().catch(console.error);
   };
 
   const addCategoryItem = async (
@@ -395,11 +411,13 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     };
     await db.categories.add(newCat);
     await syncEngine.queueAction("create", "config", newCat);
+    syncEngine.syncNow().catch(console.error);
   };
 
   const deleteCategoryItem = async (id: string) => {
     await db.categories.delete(id);
     await syncEngine.queueAction("delete", "config", { id });
+    syncEngine.syncNow().catch(console.error);
   };
 
   const syncNow = async () => {

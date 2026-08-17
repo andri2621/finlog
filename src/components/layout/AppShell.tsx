@@ -7,15 +7,13 @@ import {
   BarChart3,
   PlusCircle,
   Clock,
-  TrendingUp,
+  Wallet,
   Settings,
   WifiOff,
   RefreshCw,
   User,
   Users,
   ChevronDown,
-  Check,
-  Heart,
 } from "lucide-react";
 import { useAuth } from "@/lib/context/AuthContext";
 import { useFinance } from "@/lib/context/FinanceContext";
@@ -26,7 +24,7 @@ import { useRouter } from "next/navigation";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, partner, spreadsheetId, isLoaded, accessToken, loginWithGoogle, onboardingComplete } = useAuth();
+  const { user, partner, isLoaded, accessToken, loginWithGoogle, onboardingComplete } = useAuth();
   const { syncStatus, syncNow } = useFinance();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showPartnerModal, setShowPartnerModal] = useState(false);
@@ -74,7 +72,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     { name: "Laporan", href: "/", icon: BarChart3 },
     { name: "Riwayat", href: "/history", icon: Clock },
     { name: "Catat", href: "/add", icon: PlusCircle },
-    { name: "Pemasukan", href: "/income", icon: TrendingUp },
+    { name: "Tabungan", href: "/savings", icon: Wallet },
     { name: "Pengaturan", href: "/settings", icon: Settings },
   ];
 

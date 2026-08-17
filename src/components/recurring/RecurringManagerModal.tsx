@@ -126,8 +126,13 @@ export function RecurringManagerModal({ isOpen, onClose }: RecurringManagerModal
 
                         <button
                           type="button"
-                          onClick={() => deleteRecurringExpense(rec.id)}
-                          className="p-1.5 text-slate-500 hover:text-red-400 rounded-lg hover:bg-slate-800 transition-colors"
+                          onClick={() => {
+                            if (window.confirm(`Hapus pengeluaran rutin "${rec.name}"?`)) {
+                              deleteRecurringExpense(rec.id);
+                            }
+                          }}
+                          className="p-1.5 text-slate-500 hover:text-red-400 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                          aria-label={`Hapus ${rec.name}`}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

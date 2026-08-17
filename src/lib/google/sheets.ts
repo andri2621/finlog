@@ -1,4 +1,11 @@
-import { Transaction, Budget, SavingsGoal, RecurringExpense } from "../db/types";
+import {
+  Transaction,
+  Budget,
+  SavingsGoal,
+  SavingsLog,
+  RecurringExpense,
+  CategoryConfig,
+} from "../db/types";
 
 export interface GoogleSheetsConfig {
   spreadsheetId: string;
@@ -53,19 +60,19 @@ export async function createFinLogSpreadsheet(
         {
           properties: {
             title: SHEETS_TABS.SAVINGS_LOGS,
-            gridProperties: { rowCount: 500, columnCount: 7, frozenRowCount: 1 },
+            gridProperties: { rowCount: 500, columnCount: 8, frozenRowCount: 1 },
           },
         },
         {
           properties: {
             title: SHEETS_TABS.RECURRING,
-            gridProperties: { rowCount: 50, columnCount: 9, frozenRowCount: 1 },
+            gridProperties: { rowCount: 50, columnCount: 10, frozenRowCount: 1 },
           },
         },
         {
           properties: {
             title: SHEETS_TABS.CONFIG,
-            gridProperties: { rowCount: 50, columnCount: 5, frozenRowCount: 1 },
+            gridProperties: { rowCount: 100, columnCount: 6, frozenRowCount: 1 },
           },
         },
       ],
@@ -79,7 +86,8 @@ export async function createFinLogSpreadsheet(
 
   const data = await response.json();
   const spreadsheetId = data.spreadsheetId;
-  const spreadsheetUrl = data.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+  const spreadsheetUrl =
+    data.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
 
   // Write headers to all sheets
   await initializeSheetHeaders(accessToken, spreadsheetId);
@@ -88,7 +96,7 @@ export async function createFinLogSpreadsheet(
 }
 
 /**
- * Populate standard column headers
+ * Populate standard column headers for all 6 tabs
  */
 export async function initializeSheetHeaders(accessToken: string, spreadsheetId: string) {
   const headerData = [
@@ -128,7 +136,7 @@ export async function initializeSheetHeaders(accessToken: string, spreadsheetId:
       ],
     },
     {
-      range: `${SHEETS_TABS.SAVINGS_LOGS}!A1:G1`,
+      range: `${SHEETS_TABS.SAVINGS_LOGS}!A1:H1`,
       values: [
         [
           "ID",
@@ -138,11 +146,12 @@ export async function initializeSheetHeaders(accessToken: string, spreadsheetId:
           "Tempat Dana",
           "Jumlah",
           "Dicatat Oleh",
+          "Created At",
         ],
       ],
     },
     {
-      range: `${SHEETS_TABS.RECURRING}!A1:I1`,
+      range: `${SHEETS_TABS.RECURRING}!A1:J1`,
       values: [
         [
           "ID",
@@ -154,8 +163,13 @@ export async function initializeSheetHeaders(accessToken: string, spreadsheetId:
           "Hari Eksekusi",
           "Otomatis Catat",
           "Terakhir Dicatat",
+          "Status Aktif",
         ],
       ],
+    },
+    {
+      range: `${SHEETS_TABS.CONFIG}!A1:F1`,
+      values: [["ID", "Tipe", "Nama", "Warna", "Ikon", "Urutan"]],
     },
   ];
 
@@ -175,9 +189,10 @@ export async function initializeSheetHeaders(accessToken: string, spreadsheetId:
   );
 }
 
-/**
- * Append transaction row to Transactions tab in Google Sheets
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. TRANSACTIONS TAB
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function appendTransactionToSheet(
   accessToken: string,
   spreadsheetId: string,
@@ -213,15 +228,11 @@ export async function appendTransactionToSheet(
   return response.ok;
 }
 
-/**
- * Update an existing transaction row in Google Sheets (finds row by ID, then updates it)
- */
 export async function updateTransactionInSheet(
   accessToken: string,
   spreadsheetId: string,
   tx: Transaction
 ): Promise<boolean> {
-  // First, fetch all rows to find which row number has this transaction ID
   const readResponse = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.TRANSACTIONS}!A2:A`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -233,17 +244,22 @@ export async function updateTransactionInSheet(
 
   const rowIndex = idRows.findIndex((r) => r[0] === tx.id);
   if (rowIndex === -1) {
-    // Row not found in sheet — append it instead
     return appendTransactionToSheet(accessToken, spreadsheetId, tx);
   }
 
-  // Row numbers in Sheets are 1-indexed, plus header row (row 1)
   const sheetRow = rowIndex + 2;
   const range = `${SHEETS_TABS.TRANSACTIONS}!A${sheetRow}:J${sheetRow}`;
-
   const row = [
-    tx.id, tx.date, tx.type, tx.description, tx.category,
-    tx.paymentMethod, tx.amount, tx.recordedBy, tx.createdAt, tx.updatedAt,
+    tx.id,
+    tx.date,
+    tx.type,
+    tx.description,
+    tx.category,
+    tx.paymentMethod,
+    tx.amount,
+    tx.recordedBy,
+    tx.createdAt,
+    tx.updatedAt,
   ];
 
   const updateResponse = await fetch(
@@ -258,60 +274,14 @@ export async function updateTransactionInSheet(
   return updateResponse.ok;
 }
 
-/**
- * Delete a transaction row from Google Sheets (finds row by ID, then clears/deletes it)
- */
 export async function deleteTransactionFromSheet(
   accessToken: string,
   spreadsheetId: string,
   txId: string
 ): Promise<boolean> {
-  // Get the spreadsheet metadata to find the sheet ID for Transactions tab
-  const metaResponse = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  if (!metaResponse.ok) return false;
-  const meta = await metaResponse.json();
-  const sheetsArr = meta.sheets || [];
-  const txSheet = sheetsArr.find((s: any) => s.properties?.title === SHEETS_TABS.TRANSACTIONS);
-  if (!txSheet) return false;
-  const sheetId = txSheet.properties.sheetId;
-
-  // Find which row has this transaction ID
-  const readResponse = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.TRANSACTIONS}!A2:A`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  if (!readResponse.ok) return false;
-  const readData = await readResponse.json();
-  const idRows: string[][] = readData.values || [];
-  const rowIndex = idRows.findIndex((r) => r[0] === txId);
-  if (rowIndex === -1) return true; // Already gone
-
-  const sheetRow = rowIndex + 1; // 0-indexed for batchUpdate startIndex
-
-  const deleteResponse = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        requests: [{
-          deleteDimension: {
-            range: { sheetId, dimension: "ROWS", startIndex: sheetRow, endIndex: sheetRow + 1 },
-          },
-        }],
-      }),
-    }
-  );
-
-  return deleteResponse.ok;
+  return deleteRowByTabAndId(accessToken, spreadsheetId, SHEETS_TABS.TRANSACTIONS, txId);
 }
 
-/**
- * Fetch all transactions from Google Sheet
- */
 export async function fetchTransactionsFromSheet(
   accessToken: string,
   spreadsheetId: string
@@ -343,4 +313,448 @@ export async function fetchTransactionsFromSheet(
     updatedAt: row[9] || new Date().toISOString(),
     synced: true,
   }));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. BUDGETS TAB
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function saveBudgetToSheet(
+  accessToken: string,
+  spreadsheetId: string,
+  budget: Budget
+): Promise<boolean> {
+  const readResponse = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.BUDGETS}!A2:A`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!readResponse.ok) return false;
+
+  const readData = await readResponse.json();
+  const idRows: string[][] = readData.values || [];
+  const rowIndex = idRows.findIndex((r) => r[0] === budget.id);
+
+  const row = [budget.id, budget.month, budget.category, budget.limitAmount];
+
+  if (rowIndex === -1) {
+    const appendResponse = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.BUDGETS}!A:D:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ values: [row] }),
+      }
+    );
+    return appendResponse.ok;
+  }
+
+  const sheetRow = rowIndex + 2;
+  const range = `${SHEETS_TABS.BUDGETS}!A${sheetRow}:D${sheetRow}`;
+  const updateResponse = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+    {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ values: [row] }),
+    }
+  );
+  return updateResponse.ok;
+}
+
+export async function deleteBudgetFromSheet(
+  accessToken: string,
+  spreadsheetId: string,
+  budgetId: string
+): Promise<boolean> {
+  return deleteRowByTabAndId(accessToken, spreadsheetId, SHEETS_TABS.BUDGETS, budgetId);
+}
+
+export async function fetchBudgetsFromSheet(
+  accessToken: string,
+  spreadsheetId: string
+): Promise<Budget[]> {
+  const response = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.BUDGETS}!A2:D`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!response.ok) return [];
+  const data = await response.json();
+  const rows = data.values || [];
+
+  return rows.map((row: any[]) => ({
+    id: row[0] || "",
+    month: row[1] || "",
+    category: row[2] || "",
+    limitAmount: Number(row[3]) || 0,
+  }));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. SAVINGS TAB
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function saveSavingsToSheet(
+  accessToken: string,
+  spreadsheetId: string,
+  savings: SavingsGoal
+): Promise<boolean> {
+  const readResponse = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.SAVINGS}!A2:A`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!readResponse.ok) return false;
+
+  const readData = await readResponse.json();
+  const idRows: string[][] = readData.values || [];
+  const rowIndex = idRows.findIndex((r) => r[0] === savings.id);
+
+  const row = [
+    savings.id,
+    savings.name,
+    savings.targetAmount,
+    savings.currentAmount,
+    savings.targetDate || "",
+    savings.icon,
+    savings.color,
+  ];
+
+  if (rowIndex === -1) {
+    const appendResponse = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.SAVINGS}!A:G:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ values: [row] }),
+      }
+    );
+    return appendResponse.ok;
+  }
+
+  const sheetRow = rowIndex + 2;
+  const range = `${SHEETS_TABS.SAVINGS}!A${sheetRow}:G${sheetRow}`;
+  const updateResponse = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+    {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ values: [row] }),
+    }
+  );
+  return updateResponse.ok;
+}
+
+export async function deleteSavingsFromSheet(
+  accessToken: string,
+  spreadsheetId: string,
+  savingsId: string
+): Promise<boolean> {
+  return deleteRowByTabAndId(accessToken, spreadsheetId, SHEETS_TABS.SAVINGS, savingsId);
+}
+
+export async function fetchSavingsFromSheet(
+  accessToken: string,
+  spreadsheetId: string
+): Promise<SavingsGoal[]> {
+  const response = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.SAVINGS}!A2:G`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!response.ok) return [];
+  const data = await response.json();
+  const rows = data.values || [];
+
+  return rows.map((row: any[]) => ({
+    id: row[0] || "",
+    name: row[1] || "",
+    targetAmount: Number(row[2]) || 0,
+    currentAmount: Number(row[3]) || 0,
+    targetDate: row[4] || undefined,
+    icon: row[5] || "Target",
+    color: row[6] || "#EC4899",
+  }));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. SAVINGS_LOGS TAB
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function appendSavingsLogToSheet(
+  accessToken: string,
+  spreadsheetId: string,
+  log: SavingsLog
+): Promise<boolean> {
+  const row = [
+    log.id,
+    log.date,
+    log.savingsId,
+    log.savingsName,
+    log.pocket,
+    log.amount,
+    log.recordedBy,
+    log.createdAt,
+  ];
+
+  const response = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.SAVINGS_LOGS}!A:H:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ values: [row] }),
+    }
+  );
+  return response.ok;
+}
+
+export async function fetchSavingsLogsFromSheet(
+  accessToken: string,
+  spreadsheetId: string
+): Promise<SavingsLog[]> {
+  const response = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.SAVINGS_LOGS}!A2:H`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!response.ok) return [];
+  const data = await response.json();
+  const rows = data.values || [];
+
+  return rows.map((row: any[]) => ({
+    id: row[0] || "",
+    date: row[1] || "",
+    savingsId: row[2] || "",
+    savingsName: row[3] || "",
+    pocket: row[4] || "",
+    amount: Number(row[5]) || 0,
+    recordedBy: row[6] || "",
+    createdAt: row[7] || new Date().toISOString(),
+  }));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. RECURRING TAB
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function saveRecurringToSheet(
+  accessToken: string,
+  spreadsheetId: string,
+  rec: RecurringExpense
+): Promise<boolean> {
+  const readResponse = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.RECURRING}!A2:A`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!readResponse.ok) return false;
+
+  const readData = await readResponse.json();
+  const idRows: string[][] = readData.values || [];
+  const rowIndex = idRows.findIndex((r) => r[0] === rec.id);
+
+  const row = [
+    rec.id,
+    rec.name,
+    rec.amount,
+    rec.category,
+    rec.paymentMethod,
+    rec.frequency,
+    rec.dayOfMonth,
+    rec.autoRecord ? "TRUE" : "FALSE",
+    rec.lastRecordedDate || "",
+    rec.isActive ? "TRUE" : "FALSE",
+  ];
+
+  if (rowIndex === -1) {
+    const appendResponse = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.RECURRING}!A:J:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ values: [row] }),
+      }
+    );
+    return appendResponse.ok;
+  }
+
+  const sheetRow = rowIndex + 2;
+  const range = `${SHEETS_TABS.RECURRING}!A${sheetRow}:J${sheetRow}`;
+  const updateResponse = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+    {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ values: [row] }),
+    }
+  );
+  return updateResponse.ok;
+}
+
+export async function deleteRecurringFromSheet(
+  accessToken: string,
+  spreadsheetId: string,
+  recurringId: string
+): Promise<boolean> {
+  return deleteRowByTabAndId(accessToken, spreadsheetId, SHEETS_TABS.RECURRING, recurringId);
+}
+
+export async function fetchRecurringFromSheet(
+  accessToken: string,
+  spreadsheetId: string
+): Promise<RecurringExpense[]> {
+  const response = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.RECURRING}!A2:J`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!response.ok) return [];
+  const data = await response.json();
+  const rows = data.values || [];
+
+  return rows.map((row: any[]) => ({
+    id: row[0] || "",
+    name: row[1] || "",
+    amount: Number(row[2]) || 0,
+    category: row[3] || "",
+    paymentMethod: row[4] || "",
+    frequency: (row[5] || "monthly") as any,
+    dayOfMonth: Number(row[6]) || 1,
+    autoRecord: String(row[7]).toUpperCase() === "TRUE",
+    lastRecordedDate: row[8] || undefined,
+    isActive: String(row[9]).toUpperCase() !== "FALSE",
+  }));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. CONFIG / CATEGORIES TAB
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function saveCategoryToSheet(
+  accessToken: string,
+  spreadsheetId: string,
+  cat: CategoryConfig
+): Promise<boolean> {
+  const readResponse = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.CONFIG}!A2:A`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!readResponse.ok) return false;
+
+  const readData = await readResponse.json();
+  const idRows: string[][] = readData.values || [];
+  const rowIndex = idRows.findIndex((r) => r[0] === cat.id);
+
+  const row = [cat.id, cat.type, cat.name, cat.color, cat.icon || "Tag", cat.order];
+
+  if (rowIndex === -1) {
+    const appendResponse = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.CONFIG}!A:F:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ values: [row] }),
+      }
+    );
+    return appendResponse.ok;
+  }
+
+  const sheetRow = rowIndex + 2;
+  const range = `${SHEETS_TABS.CONFIG}!A${sheetRow}:F${sheetRow}`;
+  const updateResponse = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+    {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ values: [row] }),
+    }
+  );
+  return updateResponse.ok;
+}
+
+export async function deleteCategoryFromSheet(
+  accessToken: string,
+  spreadsheetId: string,
+  categoryId: string
+): Promise<boolean> {
+  return deleteRowByTabAndId(accessToken, spreadsheetId, SHEETS_TABS.CONFIG, categoryId);
+}
+
+export async function fetchCategoriesFromSheet(
+  accessToken: string,
+  spreadsheetId: string
+): Promise<CategoryConfig[]> {
+  const response = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEETS_TABS.CONFIG}!A2:F`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!response.ok) return [];
+  const data = await response.json();
+  const rows = data.values || [];
+
+  return rows.map((row: any[]) => ({
+    id: row[0] || "",
+    type: (row[1] || "expense_category") as any,
+    name: row[2] || "",
+    color: row[3] || "#10B981",
+    icon: row[4] || "Tag",
+    order: Number(row[5]) || 0,
+  }));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GENERIC HELPER: Delete row by Tab Name and Record ID
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function deleteRowByTabAndId(
+  accessToken: string,
+  spreadsheetId: string,
+  tabTitle: string,
+  recordId: string
+): Promise<boolean> {
+  try {
+    const metaResponse = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (!metaResponse.ok) return false;
+    const meta = await metaResponse.json();
+    const sheetsArr = meta.sheets || [];
+    const targetSheet = sheetsArr.find((s: any) => s.properties?.title === tabTitle);
+    if (!targetSheet) return false;
+    const sheetId = targetSheet.properties.sheetId;
+
+    const readResponse = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${tabTitle}!A2:A`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (!readResponse.ok) return false;
+    const readData = await readResponse.json();
+    const idRows: string[][] = readData.values || [];
+    const rowIndex = idRows.findIndex((r) => r[0] === recordId);
+    if (rowIndex === -1) return true; // Already removed
+
+    const sheetRowIndex = rowIndex + 1; // 0-indexed for batchUpdate (excluding header row index 0)
+
+    const deleteResponse = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requests: [
+            {
+              deleteDimension: {
+                range: {
+                  sheetId,
+                  dimension: "ROWS",
+                  startIndex: sheetRowIndex,
+                  endIndex: sheetRowIndex + 1,
+                },
+              },
+            },
+          ],
+        }),
+      }
+    );
+
+    return deleteResponse.ok;
+  } catch (err) {
+    console.error(`Failed to delete row from tab ${tabTitle}:`, err);
+    return false;
+  }
 }

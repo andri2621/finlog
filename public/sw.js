@@ -1,20 +1,39 @@
-﻿// Bump version on each deployment to clear old caches
-const CACHE_NAME = "finlog-v4";
+// Bump cache version on every deployment to ensure clients upgrade smoothly
+const CACHE_NAME = "finlog-v6";
 
-// Pre-cached app shell (minimal — mostly for offline fallback)
-const STATIC_ASSETS = ["/manifest.json", "/icon.jpg"];
+// Essential app shell assets cached on install
+const PRECACHE_ASSETS = [
+  "/",
+  "/manifest.json",
+  "/favicon.ico",
+  "/icon.png",
+  "/favicon/favicon.ico",
+  "/favicon/android-chrome-192x192.png",
+  "/favicon/android-chrome-512x512.png",
+  "/favicon/apple-touch-icon.png",
+];
 
-// ─── Install ───────────────────────────────────────────────────────────────────
+// ─── Install: Pre-cache HTML shell and essential static assets ────────────────
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) =>
-      cache.addAll(STATIC_ASSETS).catch(() => {})
-    )
+    caches.open(CACHE_NAME).then(async (cache) => {
+      // Pre-cache core shell
+      for (const asset of PRECACHE_ASSETS) {
+        try {
+          const res = await fetch(asset);
+          if (res.ok) {
+            await cache.put(asset, res);
+          }
+        } catch {
+          // Dev mode or missing asset fallback
+        }
+      }
+    })
   );
   self.skipWaiting();
 });
 
-// ─── Activate: clear ALL old caches ────────────────────────────────────────────
+// ─── Activate: Wipe ALL old cache versions ────────────────────────────────────
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -24,67 +43,87 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// ─── Helper: network with timeout ──────────────────────────────────────────────
-function fetchWithTimeout(request, timeoutMs = 4000) {
+// ─── Helper: Network with timeout for fast offline fallback ───────────────────
+function fetchWithTimeout(request, timeoutMs = 3000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Network timeout")), timeoutMs);
     fetch(request)
-      .then((res) => { clearTimeout(timer); resolve(res); })
-      .catch((err) => { clearTimeout(timer); reject(err); });
+      .then((res) => {
+        clearTimeout(timer);
+        resolve(res);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
   });
 }
 
-// ─── Fetch strategy ────────────────────────────────────────────────────────────
+// ─── Fetch Strategy ───────────────────────────────────────────────────────────
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // Only intercept GET
+  // Skip non-GET requests
   if (event.request.method !== "GET") return;
 
-  // External APIs (Google, Gemini) — always network, no SW
+  // External APIs (Google Sheets, Gemini AI) → Always network, no SW cache
   if (url.origin !== self.location.origin) return;
 
-  // Navigation (HTML pages) — network-first, fallback to "/"
+  // ❶ NAVIGATION (HTML pages: /, /history, /savings, /reports, /settings, etc.)
+  // Network-first when online, fallback to cached page or cached "/" shell when offline
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request)
-        .catch(() =>
-          caches.match("/").then((c) => c || new Response("Offline", { status: 503 }))
-        )
+      fetchWithTimeout(event.request, 3000)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, clone.clone());
+              cache.put("/", clone); // Ensure root is always updated as shell
+            });
+          }
+          return response;
+        })
+        .catch(async () => {
+          // Offline fallback: try specific route first, then root shell
+          const matched = await caches.match(event.request);
+          if (matched) return matched;
+          const rootMatched = await caches.match("/");
+          if (rootMatched) return rootMatched;
+          return new Response("Offline", { status: 503, headers: { "Content-Type": "text/plain" } });
+        })
     );
     return;
   }
 
-  // Next.js JS/CSS chunks — NETWORK-FIRST with cache fallback
-  // Online: always gets fresh code (no stale module errors)
-  // Offline: falls back to cached version (app still loads)
+  // ❷ NEXT.JS ASSETS & CHUNKS (/_next/static/...)
+  // Network-first when online to get latest code; fallback to cached chunks when offline
   if (url.pathname.startsWith("/_next/")) {
     event.respondWith(
-      fetchWithTimeout(event.request, 4000)
+      fetchWithTimeout(event.request, 3000)
         .then((response) => {
-          // Cache the fresh response for offline fallback
           if (response.ok) {
             const clone = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
           }
           return response;
         })
-        .catch(() =>
-          // Network failed (offline) — serve from cache
-          caches.match(event.request).then(
-            (cached) => cached || new Response("Offline", { status: 503 })
-          )
-        )
+        .catch(async () => {
+          const cached = await caches.match(event.request);
+          if (cached) return cached;
+          return new Response("", { status: 404 });
+        })
     );
     return;
   }
 
-  // Static assets (images, fonts, manifest) — cache-first (rarely change)
-  const isStaticAsset =
+  // ❸ STATIC ASSETS (images, fonts, manifest, icons)
+  // Cache-first for instant loading
+  const isStatic =
     url.pathname.match(/\.(png|jpg|jpeg|svg|webp|ico|woff2?|ttf|eot)$/) != null ||
     url.pathname === "/manifest.json";
 
-  if (isStaticAsset) {
+  if (isStatic) {
     event.respondWith(
       caches.match(event.request).then((cached) => {
         if (cached) return cached;
@@ -100,5 +139,16 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Everything else — network only
+  // ❹ ALL OTHER GET REQUESTS: Network-first with cache fallback
+  event.respondWith(
+    fetch(event.request)
+      .then((response) => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request))
+  );
 });

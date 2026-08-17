@@ -106,17 +106,6 @@ export default function SettingsPage() {
             <ChevronRight className="w-4 h-4 text-slate-400" />
           </button>
 
-          <Link
-            href="/savings"
-            className="w-full p-3.5 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors text-left"
-          >
-            <div className="flex items-center gap-3">
-              <Wallet className="w-4 h-4 text-pink-500" />
-              <span className="text-xs font-semibold text-slate-900 dark:text-white">Atur Tabungan</span>
-            </div>
-            <ChevronRight className="w-4 h-4 text-slate-400" />
-          </Link>
-
           <button
             type="button"
             onClick={() => setShowRecurringModal(true)}

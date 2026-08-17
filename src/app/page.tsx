@@ -49,18 +49,9 @@ export default function RootPage() {
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [activeDayData, setActiveDayData] = useState<{ day: string; amount: number } | null>(null);
 
-  // AppShell will redirect to /onboarding or /login if these are missing,
-  // so just render a loader while the redirect is happening.
-  if (!user || !spreadsheetId) {
-    return (
-      <div className="flex-1 flex items-center justify-center min-h-[50vh]">
-        <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
-
   // Calculate days in month & average
   const daysInMonth = useMemo(() => {
+    if (!selectedMonth) return 30;
     const [year, month] = selectedMonth.split("-").map(Number);
     return new Date(year, month, 0).getDate();
   }, [selectedMonth]);
@@ -70,10 +61,10 @@ export default function RootPage() {
 
   // Category Distribution & Budgets
   const categoryStats = useMemo(() => {
-    const expenseTxs = currentMonthTransactions.filter((tx) => tx.type === "expense");
+    const expenseTxs = (currentMonthTransactions || []).filter((tx) => tx.type === "expense");
     const catMap: Record<string, { total: number; count: number; color: string }> = {};
 
-    expenseCategories.forEach((c) => {
+    (expenseCategories || []).forEach((c) => {
       catMap[c.name] = { total: 0, count: 0, color: c.color };
     });
 
@@ -88,7 +79,7 @@ export default function RootPage() {
     return Object.entries(catMap)
       .filter(([_, data]) => data.total > 0)
       .map(([name, data]) => {
-        const catBudget = currentMonthBudgets.find((b) => b.category === name);
+        const catBudget = (currentMonthBudgets || []).find((b) => b.category === name);
         const percentOfTotal = totalExpenseMonth > 0 ? Math.round((data.total / totalExpenseMonth) * 100) : 0;
         const percentOfBudget = catBudget && catBudget.limitAmount > 0 ? Math.round((data.total / catBudget.limitAmount) * 100) : 0;
 
@@ -112,7 +103,7 @@ export default function RootPage() {
       const dayStr = String(i).padStart(2, "0");
       const fullDateStr = `${selectedMonth}-${dayStr}`;
       
-      const dayTotal = currentMonthTransactions
+      const dayTotal = (currentMonthTransactions || [])
         .filter((tx) => tx.type === "expense" && tx.date === fullDateStr)
         .reduce((sum, tx) => sum + tx.amount, 0);
 
@@ -127,13 +118,23 @@ export default function RootPage() {
 
   // Top Largest Expenses
   const topExpenses = useMemo(() => {
-    return currentMonthTransactions
+    return (currentMonthTransactions || [])
       .filter((tx) => tx.type === "expense")
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 3);
   }, [currentMonthTransactions]);
 
   const hasOverallBudget = Boolean(overallBudget && overallBudget.limitAmount > 0);
+
+  // AppShell will redirect to /onboarding or /login if these are missing,
+  // so just render a loader while the redirect is happening.
+  if (!user || !spreadsheetId) {
+    return (
+      <div className="flex-1 flex items-center justify-center min-h-[50vh]">
+        <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 space-y-4">

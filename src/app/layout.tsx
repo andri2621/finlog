@@ -13,9 +13,20 @@ export const metadata: Metadata = {
   description:
     "FinLog: Financial Log bersama pasangan. Data langsung tersimpan ke Google Sheets secara real-time, bekerja 100% offline tanpa sinyal.",
   manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "FinLog",
+  },
   icons: {
-    icon: "/icon.jpg",
-    apple: "/icon.jpg",
+    icon: [
+      { url: "/favicon/favicon.ico", sizes: "any" },
+      { url: "/favicon/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+    ],
+    apple: [
+      { url: "/favicon/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
   },
 };
 
@@ -35,6 +46,7 @@ export default function RootLayout({
   return (
     <html lang="id" className={`dark ${inter.variable} h-full antialiased`}>
       <head>
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         {/* Google Identity Services for direct Google OAuth */}

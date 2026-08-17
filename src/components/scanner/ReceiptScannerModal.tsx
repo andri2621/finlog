@@ -7,7 +7,7 @@ import {
   Camera,
   X,
   Sparkles,
-  UploadCloud,
+  Image as ImageIcon,
   AlertCircle,
   CheckCircle2,
   Save,
@@ -34,7 +34,8 @@ export function ReceiptScannerModal() {
     date: string;
   } | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const handleClose = () => {
     setIsOpen(false);
@@ -127,26 +128,30 @@ export function ReceiptScannerModal() {
           setIsProcessing(false);
         }
       };
-    } catch (err: any) {
+    } catch (e: any) {
+      console.error("File Read Error:", e);
+      setErrorMessage("Gagal membaca file foto struk.");
       setIsProcessing(false);
-      setErrorMessage(err.message || "Gagal memuat gambar struk.");
     }
   };
 
   const handleSave = async () => {
     if (!formData) return;
-    const numericAmount = parseInputNumber(formData.amountStr);
-    if (numericAmount <= 0) return;
+    const finalAmount = parseInputNumber(formData.amountStr);
+    if (!formData.description.trim() || finalAmount <= 0) {
+      setErrorMessage("Deskripsi dan nominal harus valid.");
+      return;
+    }
 
     setIsSaving(true);
     try {
       await addTransaction({
-        date: formData.date,
+        date: formData.date || getTodayString(),
         type: "expense",
-        description: formData.description.trim() || formData.category,
+        description: formData.description.trim(),
         category: formData.category,
         paymentMethod: formData.paymentMethod,
-        amount: numericAmount,
+        amount: finalAmount,
       });
 
       confetti({
@@ -166,20 +171,28 @@ export function ReceiptScannerModal() {
     }
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setPreviewImage(URL.createObjectURL(file));
+      processImageWithGemini(file);
+    }
+  };
+
   return (
     <>
-      {/* FLOATING ACTION BUTTON */}
+      {/* FLOATING ACTION BUTTON WITH CENTERED PULSE */}
       <button
         type="button"
         onClick={() => setIsOpen(true)}
         aria-label="Pindai Struk Belanja"
-        className="fixed bottom-20 right-4 sm:right-[calc(50%-200px)] z-30 w-14 h-14 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 flex items-center justify-center shadow-lg shadow-emerald-500/25 hover:scale-105 active:scale-95 transition-all duration-200 group cursor-pointer touch-manipulation"
+        className="fixed bottom-20 right-4 sm:right-[calc(50%-200px)] z-30 w-14 h-14 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 flex items-center justify-center shadow-xl shadow-emerald-500/30 hover:scale-105 active:scale-95 transition-all duration-200 group cursor-pointer touch-manipulation"
       >
-        <Scan className="w-6 h-6 stroke-[2.2] group-hover:rotate-12 transition-transform duration-300" />
-        <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500"></span>
-        </span>
+        {/* Centered Pulse Waves */}
+        {/* <span className="absolute inset-0 rounded-full bg-emerald-400 opacity-40 animate-ping pointer-events-none"></span>
+        <span className="absolute -inset-1 rounded-full bg-gradient-to-tr from-emerald-400 to-teal-300 opacity-30 blur-sm pointer-events-none"></span> */}
+
+        <Scan className="w-6 h-6 stroke-[2.2] group-hover:rotate-12 transition-transform duration-300 relative z-10" />
       </button>
 
       {/* MODAL */}
@@ -200,11 +213,11 @@ export function ReceiptScannerModal() {
                   <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                     Pindai Struk AI
                     <span className="text-[10px] font-semibold bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                      Gemini 3.5 Vision
+                      Gemini Vision
                     </span>
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {formData ? "Cek & edit sebelum disimpan" : "Foto struk, AI baca otomatis"}
+                    {formData ? "Cek & edit sebelum disimpan" : "Foto struk atau pilih dari galeri"}
                   </p>
                 </div>
               </div>
@@ -225,44 +238,62 @@ export function ReceiptScannerModal() {
                 </div>
               )}
 
-              {/* STEP 1: Upload */}
+              {/* STEP 1: Upload (Camera or Gallery) */}
               {!formData && !saveSuccess && (
-                <div className="relative border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 rounded-2xl bg-slate-50 dark:bg-slate-900/60 p-6 flex flex-col items-center justify-center text-center transition-all">
+                <div className="relative border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 rounded-2xl bg-slate-50 dark:bg-slate-900/60 p-5 flex flex-col items-center justify-center text-center transition-all">
                   {previewImage ? (
                     <div className="w-full max-h-48 rounded-xl overflow-hidden mb-3 border border-slate-200 dark:border-slate-700">
                       <img src={previewImage} alt="Preview Struk" className="w-full h-48 object-cover" />
                     </div>
                   ) : (
-                    <div className="w-16 h-16 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-emerald-500 mb-3">
-                      <Camera className="w-8 h-8" />
+                    <div className="w-14 h-14 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-emerald-500 mb-2.5">
+                      <Camera className="w-7 h-7" />
                     </div>
                   )}
-                  <p className="text-sm font-semibold text-slate-900 dark:text-white mb-1">Foto Struk Belanja</p>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white mb-1">Upload Struk Belanja</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mb-4">
-                    AI akan membaca nama toko, total, dan kategori otomatis.
+                    AI membaca nama toko, rincian barang, dan total pengeluaran otomatis.
                   </p>
+
+                  {/* Hidden Input 1: Direct Camera */}
                   <input
                     type="file"
                     accept="image/*"
                     capture="environment"
-                    ref={fileInputRef}
+                    ref={cameraInputRef}
                     className="hidden"
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        const file = e.target.files[0];
-                        setPreviewImage(URL.createObjectURL(file));
-                        processImageWithGemini(file);
-                      }
-                    }}
+                    onChange={handleFileChange}
                   />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-500/20 cursor-pointer touch-manipulation"
-                  >
-                    <UploadCloud className="w-4 h-4" />
-                    Ambil / Pilih Foto Struk
-                  </button>
+
+                  {/* Hidden Input 2: Gallery / File Picker */}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref={galleryInputRef}
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
+
+                  {/* 2 Options: Camera vs Gallery */}
+                  <div className="grid grid-cols-2 gap-2.5 w-full">
+                    <button
+                      type="button"
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="py-3 px-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-500/20 cursor-pointer touch-manipulation"
+                    >
+                      <Camera className="w-4 h-4" />
+                      <span>Buka Kamera</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => galleryInputRef.current?.click()}
+                      className="py-3 px-3 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-white border border-slate-200 dark:border-slate-700 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer touch-manipulation"
+                    >
+                      <ImageIcon className="w-4 h-4 text-emerald-500" />
+                      <span>Pilih Galeri</span>
+                    </button>
+                  </div>
                 </div>
               )}
 
