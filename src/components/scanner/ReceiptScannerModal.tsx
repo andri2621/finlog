@@ -445,7 +445,7 @@ export function ReceiptScannerModal({
                       {isSaving ? (
                         <span className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
                       ) : (
-                        <><Save className="w-4 h-4" /> Simpan Langsung</>
+                        <>Simpan Langsung</>
                       )}
                     </button>
                   </div>
