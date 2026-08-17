@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
-import { Users, X, Copy, Check, Share2, Heart, ShieldCheck } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Users, X, Copy, Check, Share2, Heart, ShieldCheck, Sparkles } from "lucide-react";
 import { useAuth } from "@/lib/context/AuthContext";
+import { createClient } from "@/lib/supabase/client";
 
 interface PartnerModalProps {
   isOpen: boolean;
@@ -10,13 +11,62 @@ interface PartnerModalProps {
 }
 
 export function PartnerModal({ isOpen, onClose }: PartnerModalProps) {
-  const { user, partner, spreadsheetId } = useAuth();
+  const { user, partner, spreadsheetId, spreadsheetName, inviteCode } = useAuth();
   const [copied, setCopied] = useState(false);
+  const [activeCode, setActiveCode] = useState<string>(inviteCode || "");
+  const supabase = createClient();
+
+  // Ensure active invite record exists in partner_invites table
+  useEffect(() => {
+    async function ensureInviteRecord() {
+      if (!isOpen || !spreadsheetId) return;
+
+      try {
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser();
+
+        if (authUser) {
+          // Check profile's invite_code or create one
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("invite_code")
+            .eq("id", authUser.id)
+            .single();
+
+          let code = profile?.invite_code;
+          if (!code) {
+            code = "FIN-" + Math.random().toString(36).substring(2, 6).toUpperCase();
+            await supabase.from("profiles").update({ invite_code: code }).eq("id", authUser.id);
+          }
+
+          setActiveCode(code);
+
+          // Upsert active invite record in partner_invites table
+          await supabase.from("partner_invites").upsert(
+            {
+              inviter_id: authUser.id,
+              invite_code: code,
+              spreadsheet_id: spreadsheetId,
+              spreadsheet_name: spreadsheetName || "FINLOG",
+              status: "active",
+            },
+            { onConflict: "invite_code" }
+          );
+        }
+      } catch (e) {
+        console.warn("Partner invite record sync:", e);
+      }
+    }
+
+    ensureInviteRecord();
+  }, [isOpen, spreadsheetId, spreadsheetName, supabase]);
 
   if (!isOpen) return null;
 
   const host = typeof window !== "undefined" ? window.location.origin : "https://finlog.app";
-  const inviteLink = `${host}/onboarding?sheetId=${spreadsheetId || "demo-finlog-sheet"}`;
+  const displayCode = activeCode || inviteCode || "FIN-PAIR";
+  const inviteLink = `${host}/invite/${displayCode}`;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(inviteLink);
@@ -25,14 +75,16 @@ export function PartnerModal({ isOpen, onClose }: PartnerModalProps) {
   };
 
   const handleShare = () => {
+    const textMessage = `Yuk catat keuangan bareng di FinLog! Klik link ini untuk gabung ke spreadsheet kita: ${inviteLink}`;
     if (navigator.share) {
       navigator.share({
         title: "Yuk catat keuangan bareng di FinLog!",
-        text: "Aku mengundang kamu untuk mencatat pengeluaran & tabungan bersama di Google Sheet FinLog kita.",
+        text: textMessage,
         url: inviteLink,
       });
     } else {
-      handleCopy();
+      const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(textMessage)}`;
+      window.open(waUrl, "_blank");
     }
   };
 
@@ -55,7 +107,7 @@ export function PartnerModal({ isOpen, onClose }: PartnerModalProps) {
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -71,15 +123,20 @@ export function PartnerModal({ isOpen, onClose }: PartnerModalProps) {
               </span>
             </div>
             <p className="text-xs text-slate-300 leading-relaxed">
-              Kirimkan link undangan ini ke pasanganmu. Saat pasanganmu mencatat di FinLog, data langsung tersimpan ke Google Sheet yang sama secara real-time tanpa database luar!
+              Kirimkan link undangan ini ke pasanganmu. Saat pasanganmu membuka link ini dan login, akun kalian otomatis terhubung ke Google Sheet yang sama secara instan!
             </p>
           </div>
 
-          {/* Invite Link Box */}
+          {/* Invite Code & Link Box */}
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1.5">
-              Link Undangan Pasangan:
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-slate-300">
+                Link Undangan Pasangan:
+              </label>
+              <span className="text-[11px] font-bold text-pink-400 font-mono bg-pink-500/10 px-2 py-0.5 rounded-md border border-pink-500/20">
+                Kode: {displayCode}
+              </span>
+            </div>
             <div className="flex items-center gap-2">
               <input
                 type="text"
@@ -88,8 +145,9 @@ export function PartnerModal({ isOpen, onClose }: PartnerModalProps) {
                 className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-slate-200 font-mono truncate focus:outline-none"
               />
               <button
+                type="button"
                 onClick={handleCopy}
-                className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-medium rounded-xl text-xs flex items-center gap-1.5 shrink-0 transition-colors"
+                className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-medium rounded-xl text-xs flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer"
               >
                 {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
                 <span>{copied ? "Tersalin" : "Salin"}</span>
@@ -99,17 +157,16 @@ export function PartnerModal({ isOpen, onClose }: PartnerModalProps) {
 
           {/* Share Button */}
           <button
+            type="button"
             onClick={handleShare}
-            className="w-full py-3 bg-pink-500 hover:bg-pink-400 text-slate-950 font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-pink-500/20"
+            className="w-full py-3.5 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-400 hover:to-rose-400 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-pink-500/25 active:scale-[0.98] cursor-pointer"
           >
             <Share2 className="w-4 h-4" />
-            Bagikan via WhatsApp ke Pasangan
+            <span>Bagikan via WhatsApp ke Pasangan</span>
           </button>
 
-
-
           {/* Privacy Note */}
-          <div className="flex items-center gap-2 text-[11px] text-slate-500 justify-center">
+          <div className="flex items-center gap-2 text-[11px] text-slate-500 justify-center pt-1">
             <ShieldCheck className="w-3.5 h-3.5" />
             <span>Data tersimpan aman di Google Drive Anda berdua.</span>
           </div>

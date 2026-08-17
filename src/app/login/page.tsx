@@ -24,12 +24,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await loginWithGoogle();
-      // Always go to onboarding after login.
-      // AppShell guard will auto-redirect to / if onboarding is already complete.
-      router.push("/onboarding");
     } catch {
-      // Login cancelled or failed — just stop loading
-    } finally {
       setLoading(false);
     }
   };

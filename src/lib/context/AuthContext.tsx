@@ -6,6 +6,7 @@ import { UserProfile } from "../db/types";
 import { db } from "../db/db";
 import { initializeDatabaseIfEmpty } from "../db/seed";
 import { getTodayString } from "../utils";
+import { createClient } from "@/lib/supabase/client";
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -16,10 +17,12 @@ interface AuthContextType {
   accessToken: string | null;
   spreadsheetId: string | null;
   spreadsheetName: string;
+  inviteCode: string | null;
   loginWithGoogle: () => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   setSpreadsheet: (id: string, name: string) => Promise<void>;
   updateProfile: (data: Partial<UserProfile>) => Promise<void>;
+  refreshGoogleToken: () => Promise<string | null>;
 }
 
 const DEFAULT_PRIMARY: UserProfile = {
@@ -36,7 +39,6 @@ const DEFAULT_PRIMARY: UserProfile = {
 
 /**
  * Check if a spreadsheetId is a real Google Sheets ID (not a placeholder).
- * Google Sheets IDs are typically 44-char alphanumeric strings.
  */
 function isValidSpreadsheetId(id: string | null | undefined): boolean {
   if (!id) return false;
@@ -47,7 +49,6 @@ function isValidSpreadsheetId(id: string | null | undefined): boolean {
 
 const TOKEN_STORAGE_KEY = "finlog_google_token";
 const KNOWN_ACCOUNTS_KEY = "finlog_known_accounts";
-const TOKEN_LIFETIME_MS = 55 * 60 * 1000; // 55 minutes
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -57,38 +58,178 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [spreadsheetId, setSpreadsheetId] = useState<string | null>(null);
   const [spreadsheetName, setSpreadsheetName] = useState<string>("FINLOG");
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // â”€â”€â”€ INIT: Load user from IndexedDB + restore token from localStorage â”€â”€â”€
+  const supabase = createClient();
+
+  // ─── REFRESH GOOGLE ACCESS TOKEN VIA SERVER ───
+  const refreshGoogleToken = useCallback(async (): Promise<string | null> => {
+    try {
+      const res = await fetch("/api/google/token");
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.accessToken) {
+          setAccessToken(data.accessToken);
+          localStorage.setItem(
+            TOKEN_STORAGE_KEY,
+            JSON.stringify({
+              token: data.accessToken,
+              expiresAt: Date.now() + (data.expiresIn || 3600) * 1000,
+            })
+          );
+          if (data.spreadsheetId && !spreadsheetId) {
+            setSpreadsheetId(data.spreadsheetId);
+          }
+          if (data.spreadsheetName) {
+            setSpreadsheetName(data.spreadsheetName);
+          }
+          return data.accessToken;
+        }
+      }
+    } catch (e) {
+      console.warn("Silent Google token refresh:", e);
+    }
+    return null;
+  }, [spreadsheetId]);
+
+  // ─── SAVE TOKEN TO LOCALSTORAGE ───
+  const saveToken = useCallback((token: string, expiresInSec: number = 3600) => {
+    setAccessToken(token);
+    localStorage.setItem(
+      TOKEN_STORAGE_KEY,
+      JSON.stringify({
+        token,
+        expiresAt: Date.now() + expiresInSec * 1000,
+      })
+    );
+  }, []);
+
+  // ─── INIT: Load user from IndexedDB & Supabase ───
   useEffect(() => {
     async function init() {
       try {
         await initializeDatabaseIfEmpty();
         const savedUser = await db.user_profile.get("user_primary");
 
-        // Restore access token from localStorage
+        // 1. Restore local cache
+        if (savedUser) {
+          setUser(savedUser);
+          if (savedUser.spreadsheetId) setSpreadsheetId(savedUser.spreadsheetId);
+          if (savedUser.spreadsheetName) setSpreadsheetName(savedUser.spreadsheetName);
+        }
+
+        // 2. Check stored token
         const storedTokenInfo = localStorage.getItem(TOKEN_STORAGE_KEY);
+        let hasActiveToken = false;
         if (storedTokenInfo) {
           try {
             const { token, expiresAt } = JSON.parse(storedTokenInfo);
             if (Date.now() < expiresAt) {
               setAccessToken(token);
-            } else {
-              localStorage.removeItem(TOKEN_STORAGE_KEY);
+              hasActiveToken = true;
             }
           } catch {
             localStorage.removeItem(TOKEN_STORAGE_KEY);
           }
         }
 
-        // Load user profile from DB
-        if (savedUser) {
-          setUser(savedUser);
-          if (savedUser.spreadsheetId) {
-            setSpreadsheetId(savedUser.spreadsheetId);
+        // 3. Supabase Auth sync
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser();
+
+        if (authUser) {
+          // Initialize fallback user from authUser immediately
+          const initialUser: UserProfile = {
+            ...DEFAULT_PRIMARY,
+            ...(savedUser || {}),
+            id: "user_primary",
+            name:
+              authUser.user_metadata?.full_name ||
+              authUser.user_metadata?.name ||
+              savedUser?.name ||
+              authUser.email?.split("@")[0] ||
+              "Pengguna FinLog",
+            email: authUser.email || savedUser?.email || "",
+            image: authUser.user_metadata?.avatar_url || savedUser?.image,
+            spreadsheetId: savedUser?.spreadsheetId || "",
+            spreadsheetName: savedUser?.spreadsheetName || "FINLOG",
+          };
+
+          setUser(initialUser);
+
+          // Fetch user profile from Supabase safely
+          try {
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("*")
+              .eq("id", authUser.id)
+              .maybeSingle();
+
+            if (profile) {
+              setInviteCode(profile.invite_code || null);
+              const activeSheetId = profile.spreadsheet_id || savedUser?.spreadsheetId || "";
+              const activeSheetName = profile.spreadsheet_name || savedUser?.spreadsheetName || "FINLOG";
+
+              const updated: UserProfile = {
+                ...initialUser,
+                name: profile.name || initialUser.name,
+                email: profile.email || initialUser.email,
+                image: profile.avatar_url || initialUser.image,
+                spreadsheetId: activeSheetId,
+                spreadsheetName: activeSheetName,
+              };
+
+              await db.user_profile.put(updated);
+              setUser(updated);
+              if (activeSheetId) setSpreadsheetId(activeSheetId);
+              if (activeSheetName) setSpreadsheetName(activeSheetName);
+
+              // Fetch partner profile if linked
+              if (profile.partner_id) {
+                const { data: partnerProfile } = await supabase
+                  .from("profiles")
+                  .select("*")
+                  .eq("id", profile.partner_id)
+                  .maybeSingle();
+
+                if (partnerProfile) {
+                  const partnerObj: UserProfile = {
+                    id: "user_partner",
+                    name: partnerProfile.name || "Pasangan",
+                    email: partnerProfile.email || "",
+                    image: partnerProfile.avatar_url,
+                    isPartner: true,
+                    streakCount: 1,
+                    lastActiveDate: getTodayString(),
+                    reminderTime: "20:00",
+                    reminderEnabled: true,
+                    theme: "dark",
+                  };
+                  await db.user_profile.put(partnerObj);
+                  setPartner(partnerObj);
+                }
+              }
+            }
+          } catch (profileErr) {
+            console.warn("Could not fetch profile from Supabase:", profileErr);
           }
-          if (savedUser.spreadsheetName) {
-            setSpreadsheetName(savedUser.spreadsheetName);
+
+          // If no active token, trigger silent refresh from backend
+          if (!hasActiveToken) {
+            await refreshGoogleToken();
+          }
+        } else {
+          // If not logged into Supabase, do not mark as authenticated
+          const isRealSupabaseConfigured =
+            process.env.NEXT_PUBLIC_SUPABASE_URL &&
+            !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder");
+
+          if (isRealSupabaseConfigured) {
+            setUser(null);
+            setPartner(null);
+            setSpreadsheetId(null);
           }
         }
       } catch (e) {
@@ -97,22 +238,102 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoaded(true);
       }
     }
+
     init();
-  }, []);
 
-  // â”€â”€â”€ SAVE TOKEN to localStorage â”€â”€â”€
-  const saveToken = useCallback((token: string) => {
-    setAccessToken(token);
-    localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({
-      token,
-      expiresAt: Date.now() + TOKEN_LIFETIME_MS,
-    }));
-  }, []);
+    // Listen to Supabase Auth state changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_IN" && session?.user) {
+        if (session.provider_token) {
+          saveToken(session.provider_token, session.expires_in || 3600);
+        }
+        // Sync profile immediately on sign in
+        let { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", session.user.id)
+          .maybeSingle();
 
-  // â”€â”€â”€ LOGIN WITH GOOGLE â”€â”€â”€
+        if (!profile) {
+          const code = "FIN-" + Math.random().toString(36).substring(2, 6).toUpperCase();
+          const { data: newProfile } = await supabase
+            .from("profiles")
+            .upsert(
+              {
+                id: session.user.id,
+                email: session.user.email || "",
+                name:
+                  session.user.user_metadata?.full_name ||
+                  session.user.user_metadata?.name ||
+                  session.user.email?.split("@")[0] ||
+                  "Pengguna FinLog",
+                avatar_url: session.user.user_metadata?.avatar_url || null,
+                invite_code: code,
+                onboarding_completed: false,
+              },
+              { onConflict: "id" }
+            )
+            .select("*")
+            .maybeSingle();
+          profile = newProfile;
+        }
+
+        if (profile) {
+          setInviteCode(profile.invite_code || null);
+          const activeSheetId = profile.spreadsheet_id || "";
+          const activeSheetName = profile.spreadsheet_name || "FINLOG";
+
+          const updated: UserProfile = {
+            ...DEFAULT_PRIMARY,
+            id: "user_primary",
+            name: profile.name || "Pengguna FinLog",
+            email: profile.email || session.user.email || "",
+            image: profile.avatar_url,
+            spreadsheetId: activeSheetId,
+            spreadsheetName: activeSheetName,
+          };
+          await db.user_profile.put(updated);
+          setUser(updated);
+          if (activeSheetId) setSpreadsheetId(activeSheetId);
+          if (activeSheetName) setSpreadsheetName(activeSheetName);
+        }
+      } else if (event === "SIGNED_OUT") {
+        setAccessToken(null);
+        setUser(null);
+        setPartner(null);
+        setSpreadsheetId(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [refreshGoogleToken, saveToken, supabase]);
+
+  // ─── LOGIN WITH GOOGLE ───
   const loginWithGoogle = useCallback(async () => {
-    const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    // 1. Try Supabase Google OAuth with offline access for refresh token
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (supabaseUrl) {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback?next=/onboarding`,
+          scopes: "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file email profile",
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
+        },
+      });
+      if (error) throw error;
+      return;
+    }
 
+    // 2. Fallback: Google Identity Services popup
+    const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (googleClientId && typeof window !== "undefined" && (window as any).google?.accounts?.oauth2) {
       return new Promise<void>((resolve, reject) => {
         const client = (window as any).google.accounts.oauth2.initTokenClient({
@@ -121,61 +342,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           callback: async (tokenResponse: any) => {
             if (tokenResponse?.access_token) {
               saveToken(tokenResponse.access_token);
-
-              // Fetch Google user info
               try {
                 const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
                   headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
                 });
                 const googleProfile = await res.json();
-
-                // Smart Logout Feature: Restore spreadsheet ID if this email was previously connected
-                let restoredSheetId = existingUser?.spreadsheetId || "";
-                let restoredSheetName = existingUser?.spreadsheetName || "FINLOG";
-
-                if (!restoredSheetId && googleProfile.email) {
-                  try {
-                    const knownAccounts = JSON.parse(localStorage.getItem(KNOWN_ACCOUNTS_KEY) || "{}");
-                    if (knownAccounts[googleProfile.email]) {
-                      restoredSheetId = knownAccounts[googleProfile.email].id;
-                      restoredSheetName = knownAccounts[googleProfile.email].name || "FINLOG";
-                    }
-                  } catch (e) {
-                    // Ignore parse error
-                  }
-                }
-
+                const existing = await db.user_profile.get("user_primary");
                 const updatedUser: UserProfile = {
                   ...DEFAULT_PRIMARY,
-                  ...(existingUser || {}),
-                  name: googleProfile.name || existingUser?.name || "",
-                  email: googleProfile.email || existingUser?.email || "",
-                  spreadsheetId: restoredSheetId,
-                  spreadsheetName: restoredSheetName,
+                  ...(existing || {}),
+                  name: googleProfile.name || existing?.name || "Pengguna FinLog",
+                  email: googleProfile.email || existing?.email || "",
                 };
                 await db.user_profile.put(updatedUser);
                 setUser(updatedUser);
-                if (updatedUser.spreadsheetId) {
-                  setSpreadsheetId(updatedUser.spreadsheetId);
-                }
-                if (updatedUser.spreadsheetName) {
-                  setSpreadsheetName(updatedUser.spreadsheetName);
-                }
-              } catch {
-                // If Google userinfo fails, still create a minimal profile
-                const existingUser = await db.user_profile.get("user_primary");
-                if (!existingUser) {
-                  const minimal: UserProfile = {
-                    ...DEFAULT_PRIMARY,
-                    name: "Pengguna FinLog",
-                    email: "",
-                  };
-                  await db.user_profile.put(minimal);
-                  setUser(minimal);
-                } else {
-                  setUser(existingUser);
-                  if (existingUser.spreadsheetId) setSpreadsheetId(existingUser.spreadsheetId);
-                }
+              } catch (e) {
+                console.error(e);
               }
               resolve();
             } else {
@@ -183,14 +365,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           },
           error_callback: (err: any) => {
-            reject(new Error(err?.message || "Google Login Closed or Failed"));
+            reject(new Error(err?.message || "Google Login Closed"));
           },
         });
         client.requestAccessToken();
       });
     }
 
-    // Fallback: mock login for local dev without Google Client ID
+    // Fallback Mock
     const mockToken = "ya29.mock_" + Date.now();
     saveToken(mockToken);
     const existingUser = await db.user_profile.get("user_primary");
@@ -202,55 +384,97 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     await db.user_profile.put(primary);
     setUser(primary);
-    if (primary.spreadsheetId) setSpreadsheetId(primary.spreadsheetId);
-  }, [saveToken]);
+  }, [saveToken, supabase]);
 
-  // â”€â”€â”€ LOGOUT â”€â”€â”€
+  // ─── LOGOUT ───
   const logout = useCallback(async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.warn("Supabase signout error:", e);
+    }
     setAccessToken(null);
     setUser(null);
+    setPartner(null);
     setSpreadsheetId(null);
     setSpreadsheetName("FINLOG");
+    setInviteCode(null);
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     try {
-      // WIPE entire offline database on logout to protect privacy.
-      // Thanks to KNOWN_ACCOUNTS_KEY, if they login with the same email, they will bypass onboarding.
-      await Promise.all(db.tables.map(table => table.clear()));
+      await Promise.all(db.tables.map((table) => table.clear()));
     } catch (e) {
       console.error("Logout DB clear error:", e);
     }
-  }, []);
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+  }, [supabase]);
 
-  // â”€â”€â”€ SET SPREADSHEET (called from onboarding) â”€â”€â”€
-  const setSpreadsheet = useCallback(async (id: string, name: string) => {
-    setSpreadsheetId(id || null);
-    setSpreadsheetName(name);
-    const currentUser = await db.user_profile.get("user_primary");
-    if (currentUser) {
-      const updated = { ...currentUser, spreadsheetId: id, spreadsheetName: name };
+  // ─── SET SPREADSHEET ───
+  const setSpreadsheet = useCallback(
+    async (id: string, name: string) => {
+      setSpreadsheetId(id || null);
+      setSpreadsheetName(name);
+
+      // 1. Update local DB
+      const currentUser = await db.user_profile.get("user_primary");
+      if (currentUser) {
+        const updated = { ...currentUser, spreadsheetId: id, spreadsheetName: name };
+        await db.user_profile.put(updated);
+        setUser(updated);
+      }
+
+      // 2. Update Supabase
+      try {
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser();
+        if (authUser) {
+          await supabase
+            .from("profiles")
+            .update({
+              spreadsheet_id: id,
+              spreadsheet_name: name,
+              onboarding_completed: true,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", authUser.id);
+        }
+      } catch (e) {
+        console.warn("Supabase profile spreadsheet update:", e);
+      }
+    },
+    [supabase]
+  );
+
+  // ─── UPDATE PROFILE ───
+  const updateProfile = useCallback(
+    async (data: Partial<UserProfile>) => {
+      const currentUser = await db.user_profile.get("user_primary");
+      if (!currentUser) return;
+      const updated = { ...currentUser, ...data };
       await db.user_profile.put(updated);
       setUser(updated);
-      
-      // Save to known accounts map
-      if (updated.email) {
-        try {
-          const known = JSON.parse(localStorage.getItem(KNOWN_ACCOUNTS_KEY) || "{}");
-          known[updated.email] = { id, name };
-          localStorage.setItem(KNOWN_ACCOUNTS_KEY, JSON.stringify(known));
-        } catch (e) {}
+
+      try {
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser();
+        if (authUser) {
+          await supabase
+            .from("profiles")
+            .update({
+              name: updated.name,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", authUser.id);
+        }
+      } catch (e) {
+        console.warn("Supabase profile update:", e);
       }
-    }
-  }, []);
-
-
-  // â”€â”€â”€ UPDATE PROFILE â”€â”€â”€
-  const updateProfile = useCallback(async (data: Partial<UserProfile>) => {
-    const currentUser = await db.user_profile.get("user_primary");
-    if (!currentUser) return;
-    const updated = { ...currentUser, ...data };
-    await db.user_profile.put(updated);
-    setUser(updated);
-  }, []);
+    },
+    [supabase]
+  );
 
   return (
     <AuthContext.Provider
@@ -263,10 +487,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         accessToken,
         spreadsheetId,
         spreadsheetName,
+        inviteCode,
         loginWithGoogle,
         logout,
         setSpreadsheet,
         updateProfile,
+        refreshGoogleToken,
       }}
     >
       {children}
@@ -281,4 +507,3 @@ export function useAuth() {
   }
   return context;
 }
-

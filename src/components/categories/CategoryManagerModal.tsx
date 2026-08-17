@@ -33,6 +33,7 @@ export function CategoryManagerModal({
   const [activeTab, setActiveTab] = useState<CategoryConfig["type"]>(defaultTab);
   const [newItemName, setNewItemName] = useState("");
   const [selectedColor, setSelectedColor] = useState("#10B981");
+  const [errorMessage, setErrorMessage] = useState("");
 
   const [itemToDelete, setItemToDelete] = useState<CategoryConfig | null>(null);
 
@@ -46,8 +47,16 @@ export function CategoryManagerModal({
       : incomeCategories;
 
   const handleAdd = async () => {
-    if (!newItemName.trim()) return;
-    await addCategoryItem(activeTab, newItemName.trim(), selectedColor);
+    const trimmed = newItemName.trim();
+    if (!trimmed) return;
+
+    if (currentList.some((item) => item.name.toLowerCase() === trimmed.toLowerCase())) {
+      setErrorMessage(`"${trimmed}" sudah ada di daftar!`);
+      return;
+    }
+
+    setErrorMessage("");
+    await addCategoryItem(activeTab, trimmed, selectedColor);
     setNewItemName("");
   };
 
@@ -190,19 +199,28 @@ export function CategoryManagerModal({
             <input
               type="text"
               value={newItemName}
-              onChange={(e) => setNewItemName(e.target.value)}
+              onChange={(e) => {
+                setErrorMessage("");
+                setNewItemName(e.target.value);
+              }}
               placeholder="Contoh: Skincare, Sedekah, QRIS..."
               className="flex-1 bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
             />
             <button
               onClick={handleAdd}
               disabled={!newItemName.trim()}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center gap-1 transition-colors"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center gap-1 transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Tambah</span>
             </button>
           </div>
+
+          {errorMessage && (
+            <p className="text-[11px] text-red-400 font-medium animate-in fade-in">
+              {errorMessage}
+            </p>
+          )}
 
           {/* Color palette */}
           <div className="flex flex-wrap gap-1.5 pt-1">
