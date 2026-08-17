@@ -124,6 +124,11 @@ function AddTransactionForm() {
       // Reset input fields
       setAmountStr("0");
       setDescription("");
+
+      // Smooth scroll back to top ready for next input
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -133,30 +138,29 @@ function AddTransactionForm() {
 
   return (
     <div className="p-4 flex flex-col min-h-full">
-      {/* SUCCESS TOAST WITH UNDO & EDIT */}
+      {/* SUCCESS FLOATING TOAST WITH UNDO & EDIT */}
       {lastSavedTransaction && (
-        <div className="mb-4 p-3 rounded-2xl bg-gradient-to-r from-[#0E2A23] to-[#0D1E2A] border border-emerald-500/40 shadow-xl animate-in slide-in-from-top-4 duration-300">
+        <div className="fixed top-3 left-3 right-3 max-w-md mx-auto z-50 p-3 rounded-2xl bg-slate-900/95 dark:bg-[#0D1E2A]/95 backdrop-blur-md border border-emerald-500/50 shadow-2xl shadow-emerald-500/10 animate-in slide-in-from-top-6 duration-300">
           <div className="flex items-center justify-between pb-2 border-b border-emerald-500/20">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
                 <CheckCircle2 className="w-4 h-4" />
               </div>
-              <div>
-                <p className="text-xs font-bold text-white">
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-white truncate">
                   {lastSavedTransaction.type === "expense"
-                    ? "Pengeluaran"
-                    : "Pemasukan"}{" "}
-                  Tersimpan
+                    ? "Pengeluaran Berhasil Dicatat"
+                    : "Pemasukan Berhasil Dicatat"}
                 </p>
-                <p className="text-[11px] text-emerald-300">
+                <p className="text-[11px] text-emerald-300 font-medium truncate">
                   {formatIDR(lastSavedTransaction.amount)} •{" "}
-                  {lastSavedTransaction.category}
+                  {lastSavedTransaction.category} ({lastSavedTransaction.paymentMethod})
                 </p>
               </div>
             </div>
             <button
               onClick={clearLastSavedTransaction}
-              className="text-[11px] text-slate-400 hover:text-white cursor-pointer"
+              className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer shrink-0 ml-2"
             >
               ✕
             </button>
@@ -179,14 +183,14 @@ function AddTransactionForm() {
                 setSelectedPaymentMethod(lastSavedTransaction.paymentMethod);
                 clearLastSavedTransaction();
               }}
-              className="py-1 px-2 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-200 flex items-center justify-center gap-1 font-medium transition-colors cursor-pointer"
+              className="py-1.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center gap-1.5 font-semibold transition-colors cursor-pointer"
             >
               <Edit2 className="w-3.5 h-3.5" /> Ubah
             </button>
             <button
               type="button"
               onClick={undoLastTransaction}
-              className="py-1 px-2 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-red-300 flex items-center justify-center gap-1 font-medium transition-colors cursor-pointer"
+              className="py-1.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-300 hover:text-rose-200 flex items-center justify-center gap-1.5 font-semibold transition-colors cursor-pointer"
             >
               <Undo2 className="w-3.5 h-3.5" /> Urungkan
             </button>

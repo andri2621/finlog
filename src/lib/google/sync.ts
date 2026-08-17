@@ -61,9 +61,32 @@ export class SyncEngine {
     if (typeof window !== "undefined") {
       window.addEventListener("online", () => this.handleNetworkChange(true));
       window.addEventListener("offline", () => this.handleNetworkChange(false));
+
+      // Auto-sync instantly when user focuses or switches to the tab/app
+      window.addEventListener("focus", () => {
+        if (
+          this.status.isOnline &&
+          this.credentials.accessToken &&
+          this.credentials.spreadsheetId
+        ) {
+          this.syncNow().catch(() => {});
+        }
+      });
+
+      document.addEventListener("visibilitychange", () => {
+        if (
+          document.visibilityState === "visible" &&
+          this.status.isOnline &&
+          this.credentials.accessToken &&
+          this.credentials.spreadsheetId
+        ) {
+          this.syncNow().catch(() => {});
+        }
+      });
+
       this.updatePendingCount();
 
-      // Auto-sync every 60 seconds to catch partner changes
+      // Auto-sync periodically every 30 seconds to catch partner / multi-device changes
       setInterval(() => {
         if (
           this.status.isOnline &&
@@ -72,7 +95,7 @@ export class SyncEngine {
         ) {
           this.syncNow().catch(() => {});
         }
-      }, 60 * 1000);
+      }, 30 * 1000);
     }
   }
 
@@ -245,33 +268,58 @@ export class SyncEngine {
         // 2. Pull latest data from all tabs in Google Sheet
         // ─────────────────────────────────────────────────────────────────────
 
-        // 2A. Transactions (timestamp merge)
+        // 2A. Transactions (timestamp merge + delete reconciliation)
         const remoteTxs = await fetchTransactionsFromSheet(token, sheetId);
-        if (remoteTxs.length > 0) {
-          const localTxs = await db.transactions.toArray();
-          const localMap = new Map(localTxs.map((tx) => [tx.id, tx]));
+        const pendingTxCreates = new Set(
+          (await db.sync_queue.where("entity").equals("transactions").toArray())
+            .filter((item) => item.action === "create")
+            .map((item) => item.data?.id)
+        );
+        const pendingTxDeletes = new Set(
+          (await db.sync_queue.where("entity").equals("transactions").toArray())
+            .filter((item) => item.action === "delete")
+            .map((item) => item.data?.id)
+        );
 
-          const toWrite: Transaction[] = [];
-          for (const remote of remoteTxs) {
-            const local = localMap.get(remote.id);
-            if (!local) {
+        const remoteTxIdSet = new Set(remoteTxs.map((tx) => tx.id));
+        const localTxs = await db.transactions.toArray();
+        const localMap = new Map(localTxs.map((tx) => [tx.id, tx]));
+
+        // Reconcile deletes: remove local transactions that were deleted from spreadsheet on other device
+        const toDeleteLocalTx = localTxs.filter(
+          (tx) => !remoteTxIdSet.has(tx.id) && !pendingTxCreates.has(tx.id) && !pendingTxDeletes.has(tx.id)
+        );
+        for (const del of toDeleteLocalTx) {
+          await db.transactions.delete(del.id);
+        }
+
+        const toWrite: Transaction[] = [];
+        for (const remote of remoteTxs) {
+          if (pendingTxDeletes.has(remote.id)) continue;
+          const local = localMap.get(remote.id);
+          if (!local) {
+            toWrite.push(remote);
+          } else {
+            const localUpdated = local.updatedAt || local.createdAt || "";
+            const remoteUpdated = remote.updatedAt || remote.createdAt || "";
+            if (remoteUpdated > localUpdated) {
               toWrite.push(remote);
-            } else {
-              const localUpdated = local.updatedAt || local.createdAt || "";
-              const remoteUpdated = remote.updatedAt || remote.createdAt || "";
-              if (remoteUpdated > localUpdated) {
-                toWrite.push(remote);
-              }
             }
-          }
-
-          if (toWrite.length > 0) {
-            await db.transactions.bulkPut(toWrite);
           }
         }
 
-        // 2B. Budgets
+        if (toWrite.length > 0) {
+          await db.transactions.bulkPut(toWrite);
+        }
+
+        // 2B. Budgets (reconcile)
         const remoteBudgets = await fetchBudgetsFromSheet(token, sheetId);
+        const remoteBudgetIdSet = new Set(remoteBudgets.map((b) => b.id));
+        const localBudgets = await db.budgets.toArray();
+        const toDeleteBudgets = localBudgets.filter((b) => !remoteBudgetIdSet.has(b.id));
+        for (const del of toDeleteBudgets) {
+          await db.budgets.delete(del.id);
+        }
         if (remoteBudgets.length > 0) {
           await db.budgets.bulkPut(remoteBudgets);
         }
@@ -301,16 +349,36 @@ export class SyncEngine {
           }
         }
 
-        // 2D. Savings Logs
+        // 2D. Savings Logs (reconcile)
         const remoteLogs = await fetchSavingsLogsFromSheet(token, sheetId);
+        const remoteLogIdSet = new Set(remoteLogs.map((l) => l.id));
+        const localLogs = await db.savings_logs.toArray();
+        const toDeleteLogs = localLogs.filter((l) => !remoteLogIdSet.has(l.id));
+        for (const del of toDeleteLogs) {
+          await db.savings_logs.delete(del.id);
+        }
         if (remoteLogs.length > 0) {
           await db.savings_logs.bulkPut(remoteLogs);
         }
 
-        // 2E. Recurring
+        // 2E. Recurring (reconcile)
         const remoteRecurring = await fetchRecurringFromSheet(token, sheetId);
-        if (remoteRecurring.length > 0) {
-          await db.recurring.bulkPut(remoteRecurring);
+        const pendingRecurringDeletes = new Set(
+          (await db.sync_queue.where("entity").equals("recurring").toArray())
+            .filter((item) => item.action === "delete")
+            .map((item) => item.data?.id)
+        );
+        const filteredRemoteRecurring = remoteRecurring.filter((r) => !pendingRecurringDeletes.has(r.id));
+        const remoteRecurringIdSet = new Set(filteredRemoteRecurring.map((r) => r.id));
+        const localRecurring = await db.recurring.toArray();
+        const toDeleteRecurring = localRecurring.filter(
+          (r) => !remoteRecurringIdSet.has(r.id) && !pendingRecurringDeletes.has(r.id)
+        );
+        for (const del of toDeleteRecurring) {
+          await db.recurring.delete(del.id);
+        }
+        if (filteredRemoteRecurring.length > 0) {
+          await db.recurring.bulkPut(filteredRemoteRecurring);
         }
 
         // 2F. Categories / Config (reconcile with delete protection)
