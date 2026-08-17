@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -143,16 +143,9 @@ export default function SettingsPage() {
     await updateProfile({ reminderEnabled: enabled });
   };
 
-  const [currentHour, currentMinute] = (reminderTime || "20:00").split(":");
-
-  const handleHourChange = async (newHour: string) => {
-    const updated = `${newHour.padStart(2, "0")}:${currentMinute || "00"}`;
-    await updateProfile({ reminderTime: updated });
-  };
-
-  const handleMinuteChange = async (newMinute: string) => {
-    const updated = `${currentHour || "20"}:${newMinute.padStart(2, "0")}`;
-    await updateProfile({ reminderTime: updated });
+  const handleChangeReminderTime = async (time: string) => {
+    if (!time) return;
+    await updateProfile({ reminderTime: time });
   };
 
   const handleRequestPermission = async () => {
@@ -161,10 +154,14 @@ export default function SettingsPage() {
   };
 
   const handleSendTestNotification = async () => {
-    let perm = notifPermission;
+    let perm = getNotificationPermission();
     if (perm !== "granted") {
       perm = await requestNotificationPermission();
       setNotifPermission(perm);
+    }
+
+    if (perm !== "granted") {
+      return;
     }
 
     const sent = await sendLocalNotification("FinLog Pengingat Keuangan 🔔", {
@@ -508,50 +505,19 @@ export default function SettingsPage() {
 
           {reminderActive && (
             <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800/80 animate-in fade-in">
-              {/* Jam Pengingat (24 Jam) */}
+              {/* Jam Pengingat */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 font-semibold">
-                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                  <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                   <span>Waktu Pengingat</span>
                 </div>
 
-                <div className="flex items-center gap-1.5">
-                  <div className="relative">
-                    <select
-                      value={currentHour || "20"}
-                      onChange={(e) => handleHourChange(e.target.value)}
-                      className="appearance-none bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl pl-2.5 pr-6 py-1 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
-                    >
-                      {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0")).map((h) => (
-                        <option key={h} value={h}>
-                          {h}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  </div>
-
-                  <span className="font-bold text-slate-400">:</span>
-
-                  <div className="relative">
-                    <select
-                      value={currentMinute || "00"}
-                      onChange={(e) => handleMinuteChange(e.target.value)}
-                      className="appearance-none bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl pl-2.5 pr-6 py-1 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
-                    >
-                      {["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"].map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  </div>
-
-                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
-                    24 Jam
-                  </span>
-                </div>
+                <input
+                  type="time"
+                  value={reminderTime || "20:00"}
+                  onChange={(e) => handleChangeReminderTime(e.target.value)}
+                  className="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                />
               </div>
 
               {/* Status Izin & Action Buttons */}

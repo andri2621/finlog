@@ -21,7 +21,11 @@ import { useAuth } from "@/lib/context/AuthContext";
 import { useFinance } from "@/lib/context/FinanceContext";
 import { PartnerModal } from "@/components/partner/PartnerModal";
 import { useRouter } from "next/navigation";
-import { sendLocalNotification } from "@/lib/notification";
+import {
+  sendLocalNotification,
+  requestNotificationPermission,
+  getNotificationPermission,
+} from "@/lib/notification";
 import { getTodayString } from "@/lib/utils";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -59,6 +63,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       router.replace("/");
     }
   }, [isLoaded, isAuthenticated, onboardingComplete, isPublicPage, pathname, router]);
+
+  // Proactively request notification permission on first open if reminders are enabled
+  useEffect(() => {
+    if (!user || user.reminderEnabled === false) return;
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (getNotificationPermission() === "default") {
+        requestNotificationPermission();
+      }
+    }
+  }, [user]);
 
   // Daily reminder scheduler
   useEffect(() => {
