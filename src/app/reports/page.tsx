@@ -346,10 +346,12 @@ export default function ReportsPage() {
           )}
         </div>
 
-        <div className="h-44 w-full pt-2">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="h-44 w-full pt-2 select-none">
+          <ResponsiveContainer width="100%" height="100%" className="outline-none focus:outline-none">
             <BarChart
               data={dailyChartData}
+              className="outline-none focus:outline-none"
+              style={{ outline: "none" }}
               onClick={(data: any) => {
                 if (data && data.activePayload && data.activePayload[0]) {
                   setActiveDayData(data.activePayload[0].payload);
@@ -364,11 +366,12 @@ export default function ReportsPage() {
                 interval={4}
               />
               <Tooltip
+                cursor={{ fill: "rgba(16, 185, 129, 0.05)" }}
                 content={({ active, payload }) => {
                   if (active && payload && payload.length) {
                     const d = payload[0].payload;
                     return (
-                      <div className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs shadow-xl">
+                      <div className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs shadow-xl pointer-events-none">
                         <p className="text-[10px] text-slate-400">{d.fullDay}</p>
                         <p className="font-bold text-emerald-400">{formatIDR(d.amount)}</p>
                       </div>
@@ -377,12 +380,13 @@ export default function ReportsPage() {
                   return null;
                 }}
               />
-              <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
+              <Bar dataKey="amount" radius={[4, 4, 0, 0]} className="outline-none focus:outline-none">
                 {dailyChartData.map((entry, index) => (
                   <Cell
                     key={`cell-${index}`}
                     fill={entry.amount > 0 ? "#10B981" : "#1E293B"}
-                    className="hover:opacity-80 cursor-pointer"
+                    className="hover:opacity-80 cursor-pointer outline-none focus:outline-none"
+                    style={{ outline: "none" }}
                   />
                 ))}
               </Bar>

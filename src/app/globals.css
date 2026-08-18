@@ -102,3 +102,35 @@ html.light input[type="time"] {
   animation: stepProgress 3.2s linear forwards;
 }
 
+/* Fix: Suppress aggressive mobile browser focus rings and outlines on Recharts SVG elements */
+.recharts-surface,
+.recharts-surface *,
+.recharts-wrapper,
+.recharts-wrapper *:focus,
+.recharts-responsive-container,
+.recharts-responsive-container *:focus,
+.recharts-bar-rectangle,
+.recharts-bar-rectangle:focus,
+.recharts-bar-rectangles,
+.recharts-bar-rectangles:focus,
+.recharts-cartesian-axis,
+.recharts-cartesian-axis *,
+.recharts-cartesian-axis:focus,
+.recharts-cartesian-axis-tick,
+.recharts-cartesian-axis-tick *,
+.recharts-cartesian-axis-tick:focus,
+.recharts-tooltip-cursor,
+.recharts-layer,
+.recharts-layer:focus,
+svg:focus,
+path:focus,
+rect:focus,
+g:focus,
+text:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  user-select: none;
+  -webkit-user-select: none;
+}
+

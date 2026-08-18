@@ -111,15 +111,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         await initializeDatabaseIfEmpty();
         const savedUser = await db.user_profile.get("user_primary");
+        const savedPartner = await db.user_profile.get("user_partner");
 
-        // 1. Restore local cache
-        if (savedUser) {
+        // 1. Restore local cache from IndexedDB
+        if (savedUser && (savedUser.name || savedUser.email || savedUser.spreadsheetId)) {
           setUser(savedUser);
           if (savedUser.spreadsheetId) setSpreadsheetId(savedUser.spreadsheetId);
           if (savedUser.spreadsheetName) setSpreadsheetName(savedUser.spreadsheetName);
         }
+        if (savedPartner) {
+          setPartner(savedPartner);
+        }
 
-        // 2. Check stored token
+        // 2. Check stored Google token
         const storedTokenInfo = localStorage.getItem(TOKEN_STORAGE_KEY);
         let hasActiveToken = false;
         if (storedTokenInfo) {
@@ -134,103 +138,122 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        // 3. Supabase Auth sync
-        const {
-          data: { user: authUser },
-        } = await supabase.auth.getUser();
+        // 3. Supabase Auth sync (safe for offline-first)
+        try {
+          // getSession reads local session storage without requiring network
+          const { data: sessionData } = await supabase.auth.getSession();
+          const session = sessionData?.session;
 
-        if (authUser) {
-          // Initialize fallback user from authUser immediately
-          const initialUser: UserProfile = {
-            ...DEFAULT_PRIMARY,
-            ...(savedUser || {}),
-            id: "user_primary",
-            name:
-              authUser.user_metadata?.full_name ||
-              authUser.user_metadata?.name ||
-              savedUser?.name ||
-              authUser.email?.split("@")[0] ||
-              "Pengguna FinLog",
-            email: authUser.email || savedUser?.email || "",
-            image: authUser.user_metadata?.avatar_url || savedUser?.image,
-            spreadsheetId: savedUser?.spreadsheetId || "",
-            spreadsheetName: savedUser?.spreadsheetName || "FINLOG",
-          };
+          const isOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
 
-          setUser(initialUser);
+          if (isOnline) {
+            const { data: userData, error: userError } = await supabase.auth.getUser();
+            const authUser = userData?.user;
 
-          // Fetch user profile from Supabase safely
-          try {
-            const { data: profile } = await supabase
-              .from("profiles")
-              .select("*")
-              .eq("id", authUser.id)
-              .maybeSingle();
-
-            if (profile) {
-              setInviteCode(profile.invite_code || null);
-              const activeSheetId = profile.spreadsheet_id || savedUser?.spreadsheetId || "";
-              const activeSheetName = profile.spreadsheet_name || savedUser?.spreadsheetName || "FINLOG";
-
-              const updated: UserProfile = {
-                ...initialUser,
-                name: profile.name || initialUser.name,
-                email: profile.email || initialUser.email,
-                image: profile.avatar_url || initialUser.image,
-                spreadsheetId: activeSheetId,
-                spreadsheetName: activeSheetName,
+            if (authUser) {
+              const initialUser: UserProfile = {
+                ...DEFAULT_PRIMARY,
+                ...(savedUser || {}),
+                id: "user_primary",
+                name:
+                  authUser.user_metadata?.full_name ||
+                  authUser.user_metadata?.name ||
+                  savedUser?.name ||
+                  authUser.email?.split("@")[0] ||
+                  "Pengguna FinLog",
+                email: authUser.email || savedUser?.email || "",
+                image: authUser.user_metadata?.avatar_url || savedUser?.image,
+                spreadsheetId: savedUser?.spreadsheetId || "",
+                spreadsheetName: savedUser?.spreadsheetName || "FINLOG",
               };
 
-              await db.user_profile.put(updated);
-              setUser(updated);
-              if (activeSheetId) setSpreadsheetId(activeSheetId);
-              if (activeSheetName) setSpreadsheetName(activeSheetName);
+              setUser(initialUser);
 
-              // Fetch partner profile if linked
-              if (profile.partner_id) {
-                const { data: partnerProfile } = await supabase
+              // Fetch user profile from Supabase safely
+              try {
+                const { data: profile } = await supabase
                   .from("profiles")
                   .select("*")
-                  .eq("id", profile.partner_id)
+                  .eq("id", authUser.id)
                   .maybeSingle();
 
-                if (partnerProfile) {
-                  const partnerObj: UserProfile = {
-                    id: "user_partner",
-                    name: partnerProfile.name || "Pasangan",
-                    email: partnerProfile.email || "",
-                    image: partnerProfile.avatar_url,
-                    isPartner: true,
-                    streakCount: 1,
-                    lastActiveDate: getTodayString(),
-                    reminderTime: "20:00",
-                    reminderEnabled: true,
-                    theme: "dark",
+                if (profile) {
+                  setInviteCode(profile.invite_code || null);
+                  const activeSheetId = profile.spreadsheet_id || savedUser?.spreadsheetId || "";
+                  const activeSheetName = profile.spreadsheet_name || savedUser?.spreadsheetName || "FINLOG";
+
+                  const updated: UserProfile = {
+                    ...initialUser,
+                    name: profile.name || initialUser.name,
+                    email: profile.email || initialUser.email,
+                    image: profile.avatar_url || initialUser.image,
+                    spreadsheetId: activeSheetId,
+                    spreadsheetName: activeSheetName,
                   };
-                  await db.user_profile.put(partnerObj);
-                  setPartner(partnerObj);
+
+                  await db.user_profile.put(updated);
+                  setUser(updated);
+                  if (activeSheetId) setSpreadsheetId(activeSheetId);
+                  if (activeSheetName) setSpreadsheetName(activeSheetName);
+
+                  // Fetch partner profile if linked
+                  if (profile.partner_id) {
+                    const { data: partnerProfile } = await supabase
+                      .from("profiles")
+                      .select("*")
+                      .eq("id", profile.partner_id)
+                      .maybeSingle();
+
+                    if (partnerProfile) {
+                      const partnerObj: UserProfile = {
+                        id: "user_partner",
+                        name: partnerProfile.name || "Pasangan",
+                        email: partnerProfile.email || "",
+                        image: partnerProfile.avatar_url,
+                        isPartner: true,
+                        streakCount: 1,
+                        lastActiveDate: getTodayString(),
+                        reminderTime: "20:00",
+                        reminderEnabled: true,
+                        theme: "dark",
+                      };
+                      await db.user_profile.put(partnerObj);
+                      setPartner(partnerObj);
+                    }
+                  }
                 }
+              } catch (profileErr) {
+                console.warn("Could not fetch profile from Supabase:", profileErr);
+              }
+
+              // If no active token, trigger silent refresh from backend
+              if (!hasActiveToken) {
+                await refreshGoogleToken();
+              }
+            } else if (!userError && !session && (!savedUser || (!savedUser.name && !savedUser.email))) {
+              // Explicitly unauthenticated and no local profile
+              setUser(null);
+              setPartner(null);
+              setSpreadsheetId(null);
+            }
+          } else {
+            // When OFFLINE: If local session or savedUser exists, keep user authenticated!
+            if (!savedUser || (!savedUser.name && !savedUser.email)) {
+              if (session?.user) {
+                const offlineUser: UserProfile = {
+                  ...DEFAULT_PRIMARY,
+                  id: "user_primary",
+                  name: session.user.user_metadata?.name || session.user.email?.split("@")[0] || "Pengguna FinLog",
+                  email: session.user.email || "",
+                  image: session.user.user_metadata?.avatar_url,
+                };
+                setUser(offlineUser);
+                await db.user_profile.put(offlineUser);
               }
             }
-          } catch (profileErr) {
-            console.warn("Could not fetch profile from Supabase:", profileErr);
           }
-
-          // If no active token, trigger silent refresh from backend
-          if (!hasActiveToken) {
-            await refreshGoogleToken();
-          }
-        } else {
-          // If not logged into Supabase, do not mark as authenticated
-          const isRealSupabaseConfigured =
-            process.env.NEXT_PUBLIC_SUPABASE_URL &&
-            !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder");
-
-          if (isRealSupabaseConfigured) {
-            setUser(null);
-            setPartner(null);
-            setSpreadsheetId(null);
-          }
+        } catch (supabaseErr) {
+          console.warn("Supabase auth check fallback to offline cache:", supabaseErr);
         }
       } catch (e) {
         console.error("AuthContext init error:", e);
@@ -243,6 +266,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // ─── PROACTIVE AUTO-REFRESH GOOGLE TOKEN ───
     const checkAndRefreshToken = async () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
       const stored = localStorage.getItem(TOKEN_STORAGE_KEY);
       if (!stored) {
         await refreshGoogleToken();

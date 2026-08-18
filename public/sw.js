@@ -1,5 +1,5 @@
 // Bump cache version on every deployment to ensure clients upgrade smoothly
-const CACHE_NAME = "finlog-v6";
+const CACHE_NAME = "finlog-v7";
 
 // Essential app shell assets cached on install
 const PRECACHE_ASSETS = [
