@@ -1,9 +1,16 @@
 // Bump cache version on every deployment to ensure clients upgrade smoothly
-const CACHE_NAME = "finlog-v7";
+const CACHE_NAME = "finlog-v9";
 
-// Essential app shell assets cached on install
+// Essential app shell assets and all main pages cached on install
 const PRECACHE_ASSETS = [
   "/",
+  "/history",
+  "/add",
+  "/savings",
+  "/settings",
+  "/reports",
+  "/how-to-install",
+  "/offline.html",
   "/manifest.json",
   "/favicon.ico",
   "/icon.png",
@@ -70,7 +77,7 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
 
   // ❶ NAVIGATION (HTML pages: /, /history, /savings, /reports, /settings, etc.)
-  // Network-first when online, fallback to cached page or cached "/" shell when offline
+  // Network-first when online, fallback to cached page, cached "/" shell, or offline page
   if (event.request.mode === "navigate") {
     event.respondWith(
       fetchWithTimeout(event.request, 3000)
@@ -85,12 +92,19 @@ self.addEventListener("fetch", (event) => {
           return response;
         })
         .catch(async () => {
-          // Offline fallback: try specific route first, then root shell
+          // Offline fallback: try specific route first, then root shell, then offline page
           const matched = await caches.match(event.request);
           if (matched) return matched;
           const rootMatched = await caches.match("/");
           if (rootMatched) return rootMatched;
-          return new Response("Offline", { status: 503, headers: { "Content-Type": "text/plain" } });
+          const offlinePage = await caches.match("/offline.html");
+          if (offlinePage) return offlinePage;
+
+          // Standalone rich fallback if cache is entirely unpopulated
+          return new Response(
+            `<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>Koneksi Belum Tersedia • FinLog</title><style>*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}body{background:#0A0F1D;color:#F8FAFC;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center}.card{max-width:380px;width:100%;background:#0F162A;border:1px solid #1E293B;border-radius:28px;padding:32px 24px;box-shadow:0 20px 40px -15px rgba(0,0,0,0.5)}.logo{font-size:22px;font-weight:900;margin-bottom:20px;color:#fff}.logo span{color:#10B981}.icon{width:68px;height:68px;margin:0 auto 16px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);border-radius:22px;display:flex;align-items:center;justify-content:center;color:#F59E0B;font-size:30px}h1{font-size:18px;font-weight:800;margin-bottom:8px;color:#fff}p{font-size:13px;color:#94A3B8;line-height:1.5;margin-bottom:20px}.info{background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:16px;padding:14px;font-size:12px;color:#6EE7B7;margin-bottom:24px;text-align:left;line-height:1.4}.btn{width:100%;padding:14px;background:#10B981;color:#0A0F1D;border:none;border-radius:18px;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 10px 25px -5px rgba(16,185,129,0.4)}</style></head><body><div class="card"><div class="logo">Fin<span>Log</span></div><div class="icon">📶</div><h1>Koneksi Belum Tersedia</h1><p>Aplikasi belum memiliki cache offline karena belum pernah dibuka saat online di perangkat ini.</p><div class="info"><strong>Perlu Online Pertama Kali:</strong> Hubungkan internet untuk login dan mengunduh data awal. Setelah itu, FinLog dapat digunakan 100% tanpa internet.</div><button class="btn" onclick="window.location.reload()">Coba Hubungkan Kembali</button></div><script>window.addEventListener('online',()=>setTimeout(()=>window.location.reload(),500));</script></body></html>`,
+            { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
+          );
         })
     );
     return;

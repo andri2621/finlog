@@ -339,10 +339,18 @@ export default function ReportsPage() {
             </p>
           </div>
 
-          {activeDayData && (
-            <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md">
-              {formatIDR(activeDayData.amount)}
-            </span>
+          {activeDayData ? (
+            <button
+              type="button"
+              onClick={() => setActiveDayData(null)}
+              className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 px-2 py-0.5 rounded-md flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Reset pilihan"
+            >
+              <span>Tgl {activeDayData.day}: {formatIDR(activeDayData.amount)}</span>
+              <span className="text-[9px] opacity-70">✕</span>
+            </button>
+          ) : (
+            <p className="text-[10px] text-slate-400">Ketuk grafik untuk lihat detail</p>
           )}
         </div>
 
@@ -354,7 +362,8 @@ export default function ReportsPage() {
               style={{ outline: "none" }}
               onClick={(data: any) => {
                 if (data && data.activePayload && data.activePayload[0]) {
-                  setActiveDayData(data.activePayload[0].payload);
+                  const clicked = data.activePayload[0].payload;
+                  setActiveDayData((prev) => (prev?.day === clicked.day ? null : clicked));
                 }
               }}
             >
@@ -381,14 +390,23 @@ export default function ReportsPage() {
                 }}
               />
               <Bar dataKey="amount" radius={[4, 4, 0, 0]} className="outline-none focus:outline-none">
-                {dailyChartData.map((entry, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={entry.amount > 0 ? "#10B981" : "#1E293B"}
-                    className="hover:opacity-80 cursor-pointer outline-none focus:outline-none"
-                    style={{ outline: "none" }}
-                  />
-                ))}
+                {dailyChartData.map((entry, index) => {
+                  const isSelected = activeDayData?.day === entry.day;
+                  return (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={entry.amount > 0 ? (isSelected ? "#34D399" : "#10B981") : "#1E293B"}
+                      stroke={isSelected ? "#10B981" : "none"}
+                      strokeWidth={isSelected ? 2 : 0}
+                      className="cursor-pointer outline-none focus:outline-none transition-all duration-200"
+                      style={{
+                        outline: "none",
+                        opacity: activeDayData && !isSelected ? 0.35 : 1,
+                        filter: isSelected ? "drop-shadow(0 0 6px rgba(16, 185, 129, 0.8))" : "none",
+                      }}
+                    />
+                  );
+                })}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
