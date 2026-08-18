@@ -57,6 +57,7 @@ export default function SettingsPage() {
     logout,
     loginWithGoogle,
     updateProfile,
+    disconnectPartner,
   } = useAuth();
   const { recurring, expenseCategories, paymentMethods, incomeCategories, syncStatus, syncNow } = useFinance();
   const { theme, setTheme } = useTheme();
@@ -71,6 +72,9 @@ export default function SettingsPage() {
   const [testNotifSuccess, setTestNotifSuccess] = useState(false);
   const [activeCode, setActiveCode] = useState<string>(inviteCode || "");
 
+  const [showPartnerDisconnectConfirm, setShowPartnerDisconnectConfirm] = useState(false);
+  const [isDisconnectingPartner, setIsDisconnectingPartner] = useState(false);
+
   const reminderTime = user?.reminderTime || "20:00";
   const reminderActive = user?.reminderEnabled ?? true;
 
@@ -78,7 +82,8 @@ export default function SettingsPage() {
 
   useEffect(() => {
     async function ensureInvite() {
-      if (!spreadsheetId) return;
+      // Don't ensure or create invite if user already has a partner or no sheet
+      if (!spreadsheetId || partner) return;
       try {
         const {
           data: { user: authUser },
@@ -114,7 +119,7 @@ export default function SettingsPage() {
       }
     }
     ensureInvite();
-  }, [spreadsheetId, spreadsheetName, supabase]);
+  }, [spreadsheetId, spreadsheetName, partner, supabase]);
 
   // Disconnect Confirmation State matching Screenshot 2
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
@@ -128,6 +133,18 @@ export default function SettingsPage() {
     navigator.clipboard.writeText(inviteLink);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  const handleConfirmDisconnectPartner = async () => {
+    setIsDisconnectingPartner(true);
+    try {
+      await disconnectPartner();
+      setShowPartnerDisconnectConfirm(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsDisconnectingPartner(false);
+    }
   };
 
   const handleConfirmDisconnect = async () => {
@@ -277,7 +294,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* SECTION: KOLABORASI (AJAK PASANGAN) */}
+      {/* SECTION: KOLABORASI PASANGAN */}
       <div className="space-y-2">
         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">
           Kolaborasi
@@ -291,36 +308,117 @@ export default function SettingsPage() {
               <div>
                 <h3 className="text-xs font-bold text-slate-900 dark:text-white">Kolaborasi Pasangan</h3>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  {partner ? `Terhubung dengan ${partner.name} 💕` : "Catat pengeluaran bersama di 1 Google Sheet"}
+                  {partner ? "1 Spreadsheet Google, dikelola bersama" : "Catat pengeluaran bersama di 1 Google Sheet"}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 pt-1">
-            <button
-              type="button"
-              onClick={() => {
-                setPartnerModalTab("invite");
-                setShowPartnerModal(true);
-              }}
-              className="py-2.5 px-3 bg-pink-500 hover:bg-pink-400 text-slate-950 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-              <span>Ajak Pasangan</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setPartnerModalTab("join");
-                setShowPartnerModal(true);
-              }}
-              className="py-2.5 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-            >
-              <Link2 className="w-3.5 h-3.5 text-blue-500" />
-              <span>Masukkan Kode</span>
-            </button>
-          </div>
+          {partner ? (
+            <div className="space-y-3 pt-1">
+              {/* Connected Partner Info Card */}
+              <div className="p-3.5 rounded-2xl bg-pink-500/5 dark:bg-pink-500/10 border border-pink-500/20 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  {partner.image || partner.avatarUrl ? (
+                    <img
+                      src={partner.image || partner.avatarUrl}
+                      alt={partner.name || "Partner"}
+                      className="w-10 h-10 rounded-full object-cover shrink-0 border-2 border-pink-500/30 shadow-sm"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-pink-500 to-rose-400 text-white flex items-center justify-center text-sm font-black shrink-0 shadow-sm">
+                      {partner.name?.charAt(0) || "P"}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                        {partner.name}
+                      </p>
+                      <span className="text-[10px] font-semibold text-pink-500 bg-pink-500/10 px-2 py-0.5 rounded-full shrink-0">
+                        Pasangan
+                      </span>
+                    </div>
+                    {partner.email && (
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                        {partner.email}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowPartnerDisconnectConfirm(true)}
+                  className="text-xs font-semibold text-red-500 hover:text-red-600 hover:underline cursor-pointer shrink-0"
+                >
+                  Putuskan
+                </button>
+              </div>
+
+              {/* Partner Disconnect Confirmation Alert */}
+              {showPartnerDisconnectConfirm && (
+                <div className="p-3.5 rounded-2xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 space-y-2.5 animate-in fade-in duration-200">
+                  <div>
+                    <p className="text-xs font-bold text-red-700 dark:text-red-400">
+                      Putuskan hubungan dengan {partner.name}?
+                    </p>
+                    <p className="text-[11px] text-red-600/90 dark:text-red-400/80 mt-0.5 leading-relaxed">
+                      Kalian tidak akan lagi berbagi spreadsheet ini. Akun pasangan akan dialihkan ke onboarding untuk membuat atau menyambungkan spreadsheet miliknya sendiri.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleConfirmDisconnectPartner}
+                      disabled={isDisconnectingPartner}
+                      className="py-2 px-3.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      {isDisconnectingPartner ? (
+                        <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : null}
+                      <span>Ya, Putuskan Hubungan</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowPartnerDisconnectConfirm(false)}
+                      disabled={isDisconnectingPartner}
+                      className="py-2 px-3.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                    >
+                      Batal
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setPartnerModalTab("invite");
+                  setShowPartnerModal(true);
+                }}
+                className="py-2.5 px-3 bg-pink-500 hover:bg-pink-400 text-slate-950 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Ajak Pasangan</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPartnerModalTab("join");
+                  setShowPartnerModal(true);
+                }}
+                className="py-2.5 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Link2 className="w-3.5 h-3.5 text-blue-500" />
+                <span>Masukkan Kode</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

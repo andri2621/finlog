@@ -46,7 +46,7 @@ function PartnerModalContent({
   onClose: () => void;
   defaultTab: "invite" | "join";
 }) {
-  const { user, partner, spreadsheetId, spreadsheetName, inviteCode, setSpreadsheet } = useAuth();
+  const { user, partner, spreadsheetId, spreadsheetName, inviteCode, setSpreadsheet, accessToken } = useAuth();
   const { syncNow } = useFinance();
   const [activeTab, setActiveTab] = useState<"invite" | "join">(defaultTab);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -61,10 +61,10 @@ function PartnerModalContent({
 
   const supabase = createClient();
 
-  // Ensure active invite record exists in partner_invites table
+  // Ensure active invite record exists in partner_invites table (only when user has a sheet and no partner)
   useEffect(() => {
     async function ensureInviteRecord() {
-      if (!spreadsheetId) return;
+      if (!spreadsheetId || partner) return;
 
       try {
         const {
@@ -76,7 +76,7 @@ function PartnerModalContent({
             .from("profiles")
             .select("invite_code")
             .eq("id", authUser.id)
-            .single();
+            .maybeSingle();
 
           let code = profile?.invite_code;
           if (!code) {
@@ -97,6 +97,13 @@ function PartnerModalContent({
             },
             { onConflict: "invite_code" }
           );
+
+          // Auto-ensure Drive sharing permissions are enabled for spreadsheet
+          if (accessToken && spreadsheetId) {
+            import("@/lib/google/sheets").then(({ makeSpreadsheetShared }) => {
+              makeSpreadsheetShared(accessToken, spreadsheetId).catch(() => {});
+            });
+          }
         }
       } catch (e) {
         console.warn("Partner invite record sync:", e);
@@ -104,7 +111,7 @@ function PartnerModalContent({
     }
 
     ensureInviteRecord();
-  }, [spreadsheetId, spreadsheetName, supabase]);
+  }, [spreadsheetId, spreadsheetName, partner, supabase]);
 
   const host = typeof window !== "undefined" ? window.location.origin : "https://finlog.app";
   const displayCode = activeCode || inviteCode || "FIN-PAIR";
@@ -148,64 +155,85 @@ function PartnerModalContent({
     setJoinError("");
 
     try {
-      // 1. Try RPC get_invite_details first
-      let targetInvite: any = null;
-      const { data: rpcData, error: rpcErr } = await supabase.rpc("get_invite_details", {
+      let finalSpreadsheetId = "";
+      let finalSpreadsheetName = "FINLOG";
+
+      // 1. Try RPC accept_partner_invite
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc("accept_partner_invite", {
         p_invite_code: formattedCode,
       });
 
-      if (!rpcErr && rpcData && rpcData.spreadsheet_id) {
-        targetInvite = rpcData;
+      if (!rpcErr && rpcRes && rpcRes.success) {
+        finalSpreadsheetId = rpcRes.spreadsheet_id;
+        finalSpreadsheetName = rpcRes.spreadsheet_name || "FINLOG";
       } else {
-        // Fallback to direct select
-        const { data, error: selectErr } = await supabase
-          .from("partner_invites")
-          .select("id, inviter_id, invite_code, spreadsheet_id, spreadsheet_name, status")
-          .eq("invite_code", formattedCode)
-          .eq("status", "active")
-          .maybeSingle();
-
-        if (selectErr || !data) {
-          setJoinError("Kode undangan tidak ditemukan atau sudah tidak aktif.");
+        if (rpcRes && !rpcRes.success && rpcRes.error) {
+          setJoinError(rpcRes.error);
           setIsJoining(false);
           return;
         }
-        targetInvite = data;
-      }
 
-      // Check if user is trying to connect with their own code
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
-
-      if (authUser && targetInvite.inviter_id === authUser.id) {
-        setJoinError("Ini adalah kode undangan Anda sendiri. Masukkan kode dari pasangan Anda.");
-        setIsJoining(false);
-        return;
-      }
-
-      // 2. Link in Supabase profiles
-      if (authUser) {
-        await supabase
+        // 2. Fallback lookup in profiles or partner_invites
+        let targetInvite: any = null;
+        const { data: profData } = await supabase
           .from("profiles")
-          .update({
-            partner_id: targetInvite.inviter_id,
-            spreadsheet_id: targetInvite.spreadsheet_id,
-            spreadsheet_name: targetInvite.spreadsheet_name || "FINLOG",
-            onboarding_completed: true,
-          })
-          .eq("id", authUser.id);
+          .select("id, name, email, avatar_url, invite_code, spreadsheet_id, spreadsheet_name")
+          .eq("invite_code", formattedCode)
+          .maybeSingle();
 
-        await supabase
-          .from("profiles")
-          .update({
-            partner_id: authUser.id,
-          })
-          .eq("id", targetInvite.inviter_id);
+        if (profData?.spreadsheet_id) {
+          targetInvite = {
+            inviter_id: profData.id,
+            spreadsheet_id: profData.spreadsheet_id,
+            spreadsheet_name: profData.spreadsheet_name || "FINLOG",
+          };
+        } else {
+          const { data: inviteRow } = await supabase
+            .from("partner_invites")
+            .select("id, inviter_id, invite_code, spreadsheet_id, spreadsheet_name, status")
+            .eq("invite_code", formattedCode)
+            .eq("status", "active")
+            .maybeSingle();
+
+          if (inviteRow?.spreadsheet_id) {
+            targetInvite = inviteRow;
+          }
+        }
+
+        if (!targetInvite) {
+          setJoinError("Kode undangan tidak ditemukan atau spreadsheet pasangan belum siap.");
+          setIsJoining(false);
+          return;
+        }
+
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser();
+
+        if (authUser) {
+          if (targetInvite.inviter_id === authUser.id) {
+            setJoinError("Ini adalah kode undangan Anda sendiri. Masukkan kode dari pasangan Anda.");
+            setIsJoining(false);
+            return;
+          }
+
+          await supabase
+            .from("profiles")
+            .update({
+              partner_id: targetInvite.inviter_id,
+              spreadsheet_id: targetInvite.spreadsheet_id,
+              spreadsheet_name: targetInvite.spreadsheet_name || "FINLOG",
+              onboarding_completed: true,
+            })
+            .eq("id", authUser.id);
+        }
+
+        finalSpreadsheetId = targetInvite.spreadsheet_id;
+        finalSpreadsheetName = targetInvite.spreadsheet_name || "FINLOG";
       }
 
       // 3. Set spreadsheet locally
-      await setSpreadsheet(targetInvite.spreadsheet_id, targetInvite.spreadsheet_name || "FINLOG");
+      await setSpreadsheet(finalSpreadsheetId, finalSpreadsheetName);
       await syncNow().catch(() => {});
 
       confetti({

@@ -102,6 +102,15 @@ html.light input[type="time"] {
   animation: stepProgress 3.2s linear forwards;
 }
 
+@keyframes toastProgress {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
 /* Fix: Suppress aggressive mobile browser focus rings and outlines on Recharts SVG elements */
 .recharts-surface,
 .recharts-surface *,

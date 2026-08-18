@@ -116,7 +116,33 @@ export async function createFinLogSpreadsheet(
     await populateInitialCategories(accessToken, spreadsheetId, initialCategories);
   }
 
+  // Automatically enable link sharing (role: writer, type: anyone) so partner can access without manual drive sharing
+  await makeSpreadsheetShared(accessToken, spreadsheetId).catch(() => {});
+
   return { spreadsheetId, spreadsheetUrl };
+}
+
+/**
+ * Enable Google Drive link sharing (anyone with link as writer) so partner can sync seamlessly
+ */
+export async function makeSpreadsheetShared(accessToken: string, spreadsheetId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${spreadsheetId}/permissions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        role: "writer",
+        type: "anyone",
+      }),
+    });
+    return res.ok;
+  } catch (e) {
+    console.warn("Failed to set Google Drive permissions:", e);
+    return false;
+  }
 }
 
 /**

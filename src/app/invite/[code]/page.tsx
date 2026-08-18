@@ -58,62 +58,77 @@ export default function InviteAcceptancePage() {
         const { data: rpcData, error: rpcErr } = await supabase
           .rpc("get_invite_details", { p_invite_code: inviteCode });
 
-        if (!rpcErr && rpcData && rpcData.invite_code) {
+        if (!rpcErr && rpcData && rpcData.invite_code && rpcData.spreadsheet_id) {
           setInviteData(rpcData as InviteData);
           setLoading(false);
           return;
         }
 
-        // 2. Fallback to standard Supabase select join
-        const { data, error: fetchErr } = await supabase
+        // 2. Direct fallback to profiles table
+        const { data: profData } = await supabase
+          .from("profiles")
+          .select("id, name, email, avatar_url, invite_code, spreadsheet_id, spreadsheet_name")
+          .eq("invite_code", inviteCode)
+          .maybeSingle();
+
+        if (profData && profData.spreadsheet_id) {
+          setInviteData({
+            id: profData.id,
+            invite_code: profData.invite_code,
+            spreadsheet_id: profData.spreadsheet_id,
+            spreadsheet_name: profData.spreadsheet_name || "FINLOG",
+            status: "active",
+            inviter: {
+              id: profData.id,
+              name: profData.name || "Pasanganmu",
+              email: profData.email || "",
+              avatar_url: profData.avatar_url,
+            },
+          });
+          setLoading(false);
+          return;
+        }
+
+        // 3. Fallback to partner_invites table
+        const { data: inviteRow } = await supabase
           .from("partner_invites")
-          .select(`
-            id,
-            inviter_id,
-            invite_code,
-            spreadsheet_id,
-            spreadsheet_name,
-            status,
-            inviter:profiles!inviter_id (
-              id,
-              name,
-              email,
-              avatar_url
-            )
-          `)
+          .select("id, inviter_id, invite_code, spreadsheet_id, spreadsheet_name, status")
           .eq("invite_code", inviteCode)
           .eq("status", "active")
-          .single();
+          .maybeSingle();
 
-        if (fetchErr || !data) {
-          setError("Undangan tidak ditemukan atau sudah tidak aktif.");
-        } else {
-          // If inviter joined query returned null due to strict RLS, try direct profile fetch
-          let inviterObj = (data as any).inviter;
-          if (!inviterObj && (data as any).inviter_id) {
-            const { data: profData } = await supabase
-              .from("profiles")
-              .select("id, name, email, avatar_url")
-              .eq("id", (data as any).inviter_id)
-              .maybeSingle();
-            if (profData) {
-              inviterObj = profData;
-            }
+        if (inviteRow && inviteRow.spreadsheet_id) {
+          let inviterName = "Pasanganmu";
+          let inviterEmail = "";
+          let inviterAvatar = "";
+
+          const { data: pData } = await supabase
+            .from("profiles")
+            .select("name, email, avatar_url")
+            .eq("id", inviteRow.inviter_id)
+            .maybeSingle();
+
+          if (pData) {
+            inviterName = pData.name || inviterName;
+            inviterEmail = pData.email || "";
+            inviterAvatar = pData.avatar_url || "";
           }
 
           setInviteData({
-            id: data.id,
-            invite_code: data.invite_code,
-            spreadsheet_id: data.spreadsheet_id,
-            spreadsheet_name: data.spreadsheet_name,
-            status: data.status,
-            inviter: inviterObj || {
-              id: (data as any).inviter_id || "",
-              name: "Pasanganmu",
-              email: "",
-              avatar_url: "",
+            id: inviteRow.id,
+            invite_code: inviteRow.invite_code,
+            spreadsheet_id: inviteRow.spreadsheet_id,
+            spreadsheet_name: inviteRow.spreadsheet_name || "FINLOG",
+            status: inviteRow.status,
+            inviter: {
+              id: inviteRow.inviter_id,
+              name: inviterName,
+              email: inviterEmail,
+              avatar_url: inviterAvatar,
             },
           });
+        } else {
+          setError("Undangan tidak ditemukan atau spreadsheet pasangan belum siap.");
         }
       } catch (err: any) {
         console.error(err);
@@ -131,28 +146,29 @@ export default function InviteAcceptancePage() {
     setIsAccepting(true);
 
     try {
-      // 1. Update user profile in Supabase
-      const { data: authSession } = await supabase.auth.getSession();
-      const currentUserId = authSession?.session?.user?.id;
+      // 1. Try RPC accept_partner_invite
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc("accept_partner_invite", {
+        p_invite_code: inviteCode,
+      });
 
-      if (currentUserId) {
-        await supabase
-          .from("profiles")
-          .update({
-            partner_id: inviteData.inviter.id,
-            spreadsheet_id: inviteData.spreadsheet_id,
-            spreadsheet_name: inviteData.spreadsheet_name || "FINLOG",
-            onboarding_completed: true,
-          })
-          .eq("id", currentUserId);
+      if (rpcErr || !rpcRes?.success) {
+        console.warn("accept_partner_invite RPC fallback:", rpcErr?.message || rpcRes?.error);
 
-        // Also link inviter to this user
-        await supabase
-          .from("profiles")
-          .update({
-            partner_id: currentUserId,
-          })
-          .eq("id", inviteData.inviter.id);
+        // Fallback update current user
+        const { data: authSession } = await supabase.auth.getSession();
+        const currentUserId = authSession?.session?.user?.id;
+
+        if (currentUserId) {
+          await supabase
+            .from("profiles")
+            .update({
+              partner_id: inviteData.inviter.id,
+              spreadsheet_id: inviteData.spreadsheet_id,
+              spreadsheet_name: inviteData.spreadsheet_name || "FINLOG",
+              onboarding_completed: true,
+            })
+            .eq("id", currentUserId);
+        }
       }
 
       // 2. Set spreadsheet in local finance context and Dexie DB
@@ -181,6 +197,16 @@ export default function InviteAcceptancePage() {
   const handleAcceptWithGoogle = async () => {
     try {
       setIsAccepting(true);
+
+      // Save invite code to Cookie & localStorage before initiating OAuth
+      // (because OAuth providers / Supabase callback often strip custom URL query params)
+      if (typeof document !== "undefined") {
+        document.cookie = `finlog_pending_invite=${inviteCode}; path=/; max-age=3600; SameSite=Lax`;
+      }
+      try {
+        localStorage.setItem("finlog_pending_invite", inviteCode);
+      } catch {}
+
       // Initiate OAuth with invite_code param so the callback automatically links
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",

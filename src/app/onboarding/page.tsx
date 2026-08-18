@@ -163,58 +163,81 @@ export default function OnboardingPage() {
     setErrorMessage("");
 
     try {
-      // 1. Check RPC get_invite_details or partner_invites table
-      let targetInvite: any = null;
-      const { data: rpcData, error: rpcErr } = await supabase.rpc("get_invite_details", {
+      let finalSpreadsheetId = "";
+      let finalSpreadsheetName = "FINLOG";
+
+      // 1. Try RPC accept_partner_invite first
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc("accept_partner_invite", {
         p_invite_code: formatted,
       });
 
-      if (!rpcErr && rpcData && rpcData.spreadsheet_id) {
-        targetInvite = rpcData;
+      if (!rpcErr && rpcRes && rpcRes.success) {
+        finalSpreadsheetId = rpcRes.spreadsheet_id;
+        finalSpreadsheetName = rpcRes.spreadsheet_name || "FINLOG";
       } else {
-        const { data, error: selectErr } = await supabase
-          .from("partner_invites")
-          .select("id, inviter_id, invite_code, spreadsheet_id, spreadsheet_name, status")
+        if (rpcRes && !rpcRes.success && rpcRes.error) {
+          setErrorMessage(rpcRes.error);
+          setIsProcessing(false);
+          return;
+        }
+
+        // 2. Fallback check profiles or partner_invites
+        let targetInvite: any = null;
+        const { data: profData } = await supabase
+          .from("profiles")
+          .select("id, name, email, avatar_url, invite_code, spreadsheet_id, spreadsheet_name")
           .eq("invite_code", formatted)
-          .eq("status", "active")
           .maybeSingle();
 
-        if (selectErr || !data) {
-          setErrorMessage("Kode undangan tidak ditemukan atau sudah tidak aktif.");
+        if (profData?.spreadsheet_id) {
+          targetInvite = {
+            inviter_id: profData.id,
+            spreadsheet_id: profData.spreadsheet_id,
+            spreadsheet_name: profData.spreadsheet_name || "FINLOG",
+          };
+        } else {
+          const { data: inviteRow } = await supabase
+            .from("partner_invites")
+            .select("id, inviter_id, invite_code, spreadsheet_id, spreadsheet_name, status")
+            .eq("invite_code", formatted)
+            .eq("status", "active")
+            .maybeSingle();
+
+          if (inviteRow?.spreadsheet_id) {
+            targetInvite = inviteRow;
+          }
+        }
+
+        if (!targetInvite) {
+          setErrorMessage("Kode undangan tidak ditemukan atau spreadsheet pasangan belum siap.");
           setIsProcessing(false);
           return;
         }
-        targetInvite = data;
-      }
 
-      // 2. Link in Supabase profile
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser();
 
-      if (authUser) {
-        if (targetInvite.inviter_id === authUser.id) {
-          setErrorMessage("Ini adalah kode Anda sendiri. Masukkan kode dari pasangan Anda.");
-          setIsProcessing(false);
-          return;
+        if (authUser) {
+          if (targetInvite.inviter_id === authUser.id) {
+            setErrorMessage("Ini adalah kode Anda sendiri. Masukkan kode dari pasangan Anda.");
+            setIsProcessing(false);
+            return;
+          }
+
+          await supabase
+            .from("profiles")
+            .update({
+              partner_id: targetInvite.inviter_id,
+              spreadsheet_id: targetInvite.spreadsheet_id,
+              spreadsheet_name: targetInvite.spreadsheet_name || "FINLOG",
+              onboarding_completed: true,
+            })
+            .eq("id", authUser.id);
         }
 
-        await supabase
-          .from("profiles")
-          .update({
-            partner_id: targetInvite.inviter_id,
-            spreadsheet_id: targetInvite.spreadsheet_id,
-            spreadsheet_name: targetInvite.spreadsheet_name || "FINLOG",
-            onboarding_completed: true,
-          })
-          .eq("id", authUser.id);
-
-        await supabase
-          .from("profiles")
-          .update({
-            partner_id: authUser.id,
-          })
-          .eq("id", targetInvite.inviter_id);
+        finalSpreadsheetId = targetInvite.spreadsheet_id;
+        finalSpreadsheetName = targetInvite.spreadsheet_name || "FINLOG";
       }
 
       // 3. Clear local mock data & set spreadsheet
@@ -222,7 +245,7 @@ export default function OnboardingPage() {
       await db.savings.clear();
       await db.budgets.clear();
 
-      await setSpreadsheet(targetInvite.spreadsheet_id, targetInvite.spreadsheet_name || "FINLOG");
+      await setSpreadsheet(finalSpreadsheetId, finalSpreadsheetName);
       await updateProfile({
         reminderEnabled,
         reminderTime,
